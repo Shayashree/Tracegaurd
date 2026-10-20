@@ -1,5 +1,8 @@
 """SQLite and JSONL storage for tasks and execution traces."""
 import json
+import logging
+import os
+import shutil
 import sqlite3
 import threading
 from pathlib import Path
@@ -9,11 +12,31 @@ from backend.models.schemas import TaskResponse, TraceEvent, VerificationResult
 
 from contextlib import contextmanager
 
+logger = logging.getLogger(__name__)
+
 class TraceStorage:
     """Manages SQLite persistence and JSONL export for tasks and traces."""
 
     def __init__(self, db_path: Optional[str] = None):
-        self.db_path = db_path or settings.DATABASE_PATH
+        if (os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")) and not db_path:
+            tmp_dir = Path("/tmp")
+            tmp_db = tmp_dir / "traceguard.db"
+            if not tmp_db.exists():
+                candidates = [
+                    Path(settings.BASE_DIR) / "data" / "traceguard.db",
+                    Path(settings.BASE_DIR) / "traceguard.db",
+                ]
+                for cand in candidates:
+                    if cand.exists():
+                        try:
+                            shutil.copyfile(str(cand), str(tmp_db))
+                            logger.info(f"Initialized Vercel SQLite storage at {tmp_db} from {cand}")
+                            break
+                        except Exception as e:
+                            logger.warning(f"Could not copy seed database to {tmp_db}: {e}")
+            self.db_path = str(tmp_db)
+        else:
+            self.db_path = db_path or settings.DATABASE_PATH
         self._lock = threading.RLock()
         self._init_db()
 
@@ -22,7 +45,10 @@ class TraceStorage:
         conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=15.0)
         conn.row_factory = sqlite3.Row
         try:
-            conn.execute("PRAGMA journal_mode = WAL;")
+            try:
+                conn.execute("PRAGMA journal_mode = WAL;")
+            except Exception:
+                pass
             conn.execute("PRAGMA busy_timeout = 15000;")
             with conn:
                 yield conn

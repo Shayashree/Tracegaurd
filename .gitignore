@@ -33,9 +33,17 @@ ENV/
 # Database & Traces
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite3
+test_*.db
 *.jsonl
 trace_exports/
+
+# Un-ignore official benchmark dataset and persistent database for deployment
+!data/benchmarks/*.jsonl
+!traceguard.db
+!data/traceguard.db
 
 # Testing
 .pytest_cache/
