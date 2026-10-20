@@ -743,6 +743,41 @@ class TraceStorage:
             rows = cursor.fetchall()
             return [DiagnosticReport.model_validate(json.loads(r["report_json"])) for r in rows]
 
+    def get_all_diagnostic_reports(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        experiment_id: Optional[str] = None,
+        failure_category: Optional[str] = None,
+        diagnostic_status: Optional[str] = None,
+    ) -> List[Any]:
+        """Fetch diagnostic reports with filtering and pagination."""
+        from backend.reliability.diagnostic_report import DiagnosticReport
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            conditions = []
+            params: List[Any] = []
+            if experiment_id:
+                conditions.append("experiment_id = ?")
+                params.append(experiment_id)
+            if failure_category:
+                conditions.append("primary_failure_category = ?")
+                params.append(failure_category)
+            if diagnostic_status:
+                conditions.append("diagnostic_status = ?")
+                params.append(diagnostic_status)
+            where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+            query = f"""
+                SELECT report_json FROM diagnostic_reports
+                {where_clause}
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+            """
+            params.extend([limit, offset])
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [DiagnosticReport.model_validate(json.loads(r["report_json"])) for r in rows]
+
     # -----------------------------------------------------------------------
     # Milestone 4: Recovery Storage
     # -----------------------------------------------------------------------
@@ -863,6 +898,41 @@ class TraceStorage:
                 WHERE experiment_id = ?
                 ORDER BY created_at ASC
             """, (experiment_id,))
+            rows = cursor.fetchall()
+            return [RecoveryReport.model_validate(json.loads(r["report_json"])) for r in rows]
+
+    def get_all_recovery_reports(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        experiment_id: Optional[str] = None,
+        policy_id: Optional[str] = None,
+        terminal_status: Optional[str] = None,
+    ) -> List[Any]:
+        """Fetch recovery reports with filtering and pagination."""
+        from backend.reliability.recovery_report import RecoveryReport
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            conditions = []
+            params: List[Any] = []
+            if experiment_id:
+                conditions.append("experiment_id = ?")
+                params.append(experiment_id)
+            if policy_id:
+                conditions.append("policy_id = ?")
+                params.append(policy_id)
+            if terminal_status:
+                conditions.append("terminal_status = ?")
+                params.append(terminal_status)
+            where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+            query = f"""
+                SELECT report_json FROM recovery_reports
+                {where_clause}
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+            """
+            params.extend([limit, offset])
+            cursor.execute(query, params)
             rows = cursor.fetchall()
             return [RecoveryReport.model_validate(json.loads(r["report_json"])) for r in rows]
 

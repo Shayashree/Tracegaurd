@@ -47,3 +47,8 @@ htmlcov/
 .idea/
 *.swp
 *.swo
+
+# Node & Frontend
+node_modules/
+frontend/dist/
+frontend/.env.local

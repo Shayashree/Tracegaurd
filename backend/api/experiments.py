@@ -76,6 +76,101 @@ def run_experiment(
             detail=f"Experiment runner failed: {str(e)}"
         )
 
+@router.get("", response_model=List[ExperimentSummary])
+@router.get("/", response_model=List[ExperimentSummary], include_in_schema=False)
+def list_experiments(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    storage: TraceStorage = Depends(get_storage)
+) -> List[ExperimentSummary]:
+    """List all executed experiments ordered by creation time descending."""
+    experiments = storage.list_experiments()
+    return experiments[offset : offset + limit]
+
+@router.get("/overview/stats")
+def get_platform_overview_stats(
+    storage: TraceStorage = Depends(get_storage)
+) -> Dict[str, Any]:
+    """Calculate platform-wide KPI statistics from persisted experiment runs."""
+    experiments = storage.list_experiments()
+    total_experiments = len(experiments)
+
+    total_runs = 0
+    total_verified = 0
+    total_tool_calls = 0
+    total_cost = 0.0
+    latencies = []
+
+    mode_stats: Dict[str, Dict[str, Any]] = {}
+    failure_counts: Dict[str, int] = {}
+
+    with storage._lock, storage._connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM experiment_results")
+        rows = cursor.fetchall()
+        total_runs = len(rows)
+        for r in rows:
+            mode = r["agent_mode"]
+            if mode not in mode_stats:
+                mode_stats[mode] = {"total": 0, "verified": 0, "latencies": [], "tool_calls": 0}
+            mode_stats[mode]["total"] += 1
+            if r["verification_status"] == "verified":
+                total_verified += 1
+                mode_stats[mode]["verified"] += 1
+            dur = r["total_duration_ms"] or 0.0
+            latencies.append(dur)
+            mode_stats[mode]["latencies"].append(dur)
+            tc = r["tool_call_count"] or 0
+            total_tool_calls += tc
+            mode_stats[mode]["tool_calls"] += tc
+            if r["estimated_cost"]:
+                total_cost += r["estimated_cost"]
+            if r["terminal_status"] != "successful_completion":
+                status = r["terminal_status"]
+                failure_counts[status] = failure_counts.get(status, 0) + 1
+
+        cursor.execute("SELECT terminal_status FROM recovery_reports")
+        rec_rows = cursor.fetchall()
+        rec_count = len(rec_rows)
+        rec_success = sum(1 for rr in rec_rows if rr["terminal_status"] == "recovered_successfully")
+
+    success_rate = round((total_verified / total_runs) * 100.0, 1) if total_runs > 0 else 0.0
+    rec_success_rate = round((rec_success / rec_count) * 100.0, 1) if rec_count > 0 else 0.0
+    sorted_lats = sorted(latencies)
+    med_latency = round(sorted_lats[len(sorted_lats) // 2], 1) if sorted_lats else 0.0
+    mean_latency = round(sum(latencies) / len(latencies), 1) if latencies else 0.0
+    avg_tools = round(total_tool_calls / total_runs, 2) if total_runs > 0 else 0.0
+
+    mode_breakdown = []
+    for mode, data in sorted(mode_stats.items(), key=lambda x: x[0]):
+        m_tot = data["total"]
+        m_ver = data["verified"]
+        m_sr = round((m_ver / m_tot) * 100.0, 1) if m_tot > 0 else 0.0
+        m_mean_lat = round(sum(data["latencies"]) / len(data["latencies"]), 1) if data["latencies"] else 0.0
+        m_avg_tools = round(data["tool_calls"] / m_tot, 2) if m_tot > 0 else 0.0
+        mode_breakdown.append({
+            "mode": mode,
+            "total_runs": m_tot,
+            "verified_runs": m_ver,
+            "success_rate": m_sr,
+            "mean_latency_ms": m_mean_lat,
+            "avg_tool_calls": m_avg_tools,
+        })
+
+    return {
+        "total_experiments": total_experiments,
+        "total_runs_evaluated": total_runs,
+        "verified_task_success_rate": success_rate,
+        "recovery_success_rate": rec_success_rate,
+        "total_recovery_interventions": rec_count,
+        "median_latency_ms": med_latency,
+        "mean_latency_ms": mean_latency,
+        "average_tool_calls_per_task": avg_tools,
+        "total_measured_cost": round(total_cost, 4),
+        "mode_breakdown": mode_breakdown,
+        "failure_distribution": [{"category": k, "count": v} for k, v in sorted(failure_counts.items(), key=lambda x: -x[1])],
+    }
+
 @router.get("/{experiment_id}", response_model=ExperimentSummary)
 def get_experiment(
     experiment_id: str,

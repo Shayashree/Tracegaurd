@@ -109,6 +109,24 @@ def get_run_recovery(
         )
     return report
 
+@router.get("/recovery/reports", response_model=List[RecoveryReport])
+def list_recovery_reports(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    experiment_id: Optional[str] = Query(None, description="Filter by experiment ID"),
+    policy_id: Optional[str] = Query(None, description="Filter by policy ID"),
+    status: Optional[str] = Query(None, description="Filter by terminal status"),
+    storage: TraceStorage = Depends(get_storage),
+) -> List[RecoveryReport]:
+    """List recovery reports with optional filters and pagination."""
+    return storage.get_all_recovery_reports(
+        limit=limit,
+        offset=offset,
+        experiment_id=experiment_id,
+        policy_id=policy_id,
+        terminal_status=status,
+    )
+
 @router.get("/recovery/{recovery_id}", response_model=RecoveryReport)
 def get_recovery_by_id(
     recovery_id: str,

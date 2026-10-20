@@ -69,6 +69,24 @@ def get_detector_configuration(
     """Return active detector version and non-sensitive configuration parameters."""
     return detector.config
 
+@router.get("", response_model=List[DiagnosticReport])
+def list_diagnostic_reports(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    experiment_id: Optional[str] = Query(None, description="Filter by experiment ID"),
+    failure_category: Optional[str] = Query(None, description="Filter by failure category"),
+    status: Optional[str] = Query(None, description="Filter by diagnostic status"),
+    storage: TraceStorage = Depends(get_storage),
+) -> List[DiagnosticReport]:
+    """List diagnostic reports with optional filters and pagination."""
+    return storage.get_all_diagnostic_reports(
+        limit=limit,
+        offset=offset,
+        experiment_id=experiment_id,
+        failure_category=failure_category,
+        diagnostic_status=status,
+    )
+
 @router.get("/{diagnostic_id}", response_model=DiagnosticReport)
 def get_diagnostic_report_by_id(
     diagnostic_id: str,

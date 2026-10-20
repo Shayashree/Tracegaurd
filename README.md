@@ -287,14 +287,108 @@ The following metrics represent actual empirical measurements obtained from a co
 
 ---
 
-## 10. Known Limitations & Final Milestone Roadmap
+### Milestone 6: Interactive Dashboard, Backend Integration, and Research Visualization (Completed)
+- **Modern Full-Stack Web Application:** High-performance React 19 + TypeScript + Vite + Tailwind CSS v4 dashboard providing transparent visibility into agent reliability, trajectories, failure diagnostics, targeted recovery, and statistical evaluations.
+- **10 Dedicated Research Pages:**
+  1. **Overview Dashboard:** Platform-wide KPI cards, mode-by-mode verified success comparisons, empirical failure distribution bar charts, latency overhead distributions, and recent experiment logs.
+  2. **Experiments Registry:** Real-time database inspection with search, mode/status filtering, pagination, and drill-down into task execution records.
+  3. **Run Experiment Wizard:** Multi-section experiment configuration interface supporting benchmark versioning, task selection (all, category, or cherry-picked IDs), controlled failure injection, agent mode selection (`baseline`, `fixed_retry`, `traceguard_recovery`), step/timeout constraints, duplicate submission guards, and bounded progress tracking.
+  4. **Execution Trace Explorer:** Chronological step-by-step observable trajectory viewer with event type / tool filters, error highlights, recovery event badges, structured input/output previews, and one-click JSONL export.
+  5. **Failure Diagnostics Explorer:** Complete F1–F9 taxonomy findings with deterministic/heuristic certainty status (`confirmed`, `suspected`), severity classification, linked evidence event IDs, and ground-truth detector evaluation metrics ($P$, $R$, $F_1$, latency).
+  6. **Recovery Analysis:** Complete 7-stage lifecycle visualization (Trajectory → Diagnosis → Policy Selection → Budget Check → Intervention → Re-execution → Verification), policy selection rationales (Policies A–H), multi-dimensional budget consumption, and verifier proof.
+  7. **Strategy Comparison:** Rigorous paired statistical evaluations (Baseline vs. Fixed Retry vs. TraceGuard Recovery) computing Wilson 95% confidence intervals, absolute/relative gains, Edwards continuity-corrected McNemar $\chi^2$ and exact binomial hypothesis tests ($p < 0.05$).
+  8. **Research Evaluation & Ablation:** Systematic evaluation of research questions RQ1–RQ6, 4-way component ablation decomposition (`baseline`, `detection_only`, `fixed_retry`, `traceguard_recovery`), and automated empirical metric interpretation.
+  9. **Reports & Exports:** Formatted Markdown research report viewer, SHA-256 reproducibility manifest inspector, and direct download links for JSON, JSONL, and Markdown research artifacts.
+  10. **Settings & Configuration:** Live backend health status, active model adapter parameters, detector thresholds, default recovery budget bounds, and registered tool capabilities.
 
-### Current Limitations (Milestone 5)
-1. **Deterministic Mock Tools & Fixtures:** Primary experiments rely on deterministic synthetic tools and mock LLM fixtures to ensure reproducible execution without external API costs or non-deterministic drift.
-2. **Stateless Tool Environments:** Synthetic tools in the benchmark are stateless; state rollback in stateful external environments (file modification, database transactions) requires sandboxed transactional support.
-3. **Verification Ground-Truth Dependency:** The framework strictly reports unverified tasks as `unverified` rather than assuming success, which limits reported recovery success rates on tasks lacking ground-truth rules.
+---
 
-### Final Milestone: Milestone 6 — Frontend Dashboard & Deployment Integration
-- **React + Vite Interactive Dashboard:** Rich user interface displaying step-by-step observable trajectories, live diagnostic reports, and recovery intervention diffs.
-- **Comparative Experiment Visualizer:** Side-by-side visualization of `baseline`, `fixed_retry`, and `traceguard_recovery` runs with paired statistical charts.
-- **Failure Taxonomy Heatmap:** Real-time visual breakdown of failure categories across benchmark tasks and test splits.
+## 10. Startup and Run Instructions
+
+### 10.1 Prerequisites
+- **Python**: 3.11+
+- **Node.js**: 18+ (tested on Node v24.14.0, npm 11.9.0)
+
+### 10.2 Installation
+
+#### Backend
+```bash
+# Clone or navigate to the repository
+cd traceguard
+
+# Install Python backend dependencies
+pip install -r requirements.txt
+```
+
+#### Frontend
+```bash
+# Navigate to the frontend directory
+cd frontend
+
+# Install frontend dependencies
+npm install
+```
+
+### 10.3 Configuration
+Backend configuration is managed via environment variables (or `.env` file):
+```bash
+# Example .env (no secrets required for local deterministic mode)
+MODEL_ADAPTER=mock
+DEFAULT_MAX_STEPS=10
+DATABASE_PATH=data/traceguard.db
+LOG_LEVEL=INFO
+```
+
+Frontend configuration (optional override in `frontend/.env`):
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+*(By default, Vite's internal development server proxy automatically forwards `/health`, `/experiments`, `/tasks`, `/benchmarks`, `/diagnostics`, and `/recovery` to `http://127.0.0.1:8000`).*
+
+### 10.4 Starting the Application
+
+#### Step 1: Start the FastAPI Backend
+From the repository root:
+```bash
+uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+```
+The backend API and Swagger OpenAPI documentation will be available at:
+- **API Health Check:** `http://127.0.0.1:8000/health`
+- **Interactive OpenAPI Docs:** `http://127.0.0.1:8000/docs`
+
+#### Step 2: Start the React Frontend Dashboard
+In a separate terminal:
+```bash
+cd frontend
+npm run dev
+```
+Open your browser to:
+- **Dashboard URL:** `http://localhost:5173`
+
+### 10.5 Running Test Suites
+
+#### Backend Test Suite (Milestones 1–5 regression test suite)
+```bash
+# Run all 143 backend tests
+python -m pytest
+```
+
+#### Frontend Test Suite (Components, layout, and API client)
+```bash
+cd frontend
+npm test
+```
+
+#### Frontend Production Build
+```bash
+cd frontend
+npm run build
+```
+
+---
+
+## 11. Known Limitations & Research Threats to Validity
+
+1. **Synthetic Deterministic Fixtures:** Core experiments utilize deterministic mock tools and local models to ensure reproducible, zero-cost benchmarking without network drift or external API rate limits.
+2. **Stateless Tool Environments:** Benchmark tools operate in-memory; evaluating stateful real-world environments (e.g. bash file mutations, production database commits) requires sandboxed transactional rollback.
+3. **Paired Statistical Sample Size Requirements:** Paired hypothesis testing requires running multi-mode evaluations over identical benchmark task sets. When evaluating single-mode runs, comparative metrics indicate that a paired baseline is required.
