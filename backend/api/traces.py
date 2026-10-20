@@ -1,0 +1,46 @@
+"""Execution trace query and export endpoints."""
+import logging
+from typing import List
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from backend.api.tasks import get_storage
+from backend.models.schemas import TraceEvent
+from backend.tracing.storage import TraceStorage
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/tasks", tags=["Traces"])
+
+@router.get("/{task_id}/traces", response_model=List[TraceEvent])
+def get_task_traces(
+    task_id: str,
+    storage: TraceStorage = Depends(get_storage)
+) -> List[TraceEvent]:
+    """Retrieve ordered execution events recorded for the given task."""
+    task = storage.get_task(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task with ID '{task_id}' not found."
+        )
+    return storage.get_events(task_id)
+
+@router.get("/{task_id}/traces/export")
+def export_task_traces_jsonl(
+    task_id: str,
+    storage: TraceStorage = Depends(get_storage)
+) -> Response:
+    """Export the execution trace as JSON Lines (JSONL)."""
+    task = storage.get_task(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task with ID '{task_id}' not found."
+        )
+
+    jsonl_content = storage.export_jsonl(task_id)
+    filename = f"{task_id}_trace.jsonl"
+    return Response(
+        content=jsonl_content,
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "prod_001",
+    "name": "Product A",
+    "category": "Peripherals",
+    "price": 45.00,
+    "in_stock": true,
+    "description": "Ergonomic wireless mouse with customizable DPI and silent click buttons."
+  },
+  {
+    "id": "prod_002",
+    "name": "Product B",
+    "category": "Peripherals",
+    "price": 85.00,
+    "in_stock": true,
+    "description": "Mechanical keyboard with hot-swappable switches and RGB backlighting."
+  },
+  {
+    "id": "prod_003",
+    "name": "Product C",
+    "category": "Audio",
+    "price": 120.00,
+    "in_stock": false,
+    "description": "Noise-cancelling over-ear headphones with 30-hour battery life."
+  },
+  {
+    "id": "prod_004",
+    "name": "UltraWide Monitor",
+    "category": "Displays",
+    "price": 350.00,
+    "in_stock": true,
+    "description": "34-inch curved IPS monitor with 144Hz refresh rate and USB-C power delivery."
+  },
+  {
+    "id": "prod_005",
+    "name": "USB-C Hub Pro",
+    "category": "Accessories",
+    "price": 55.00,
+    "in_stock": true,
+    "description": "7-in-1 multi-port adapter with HDMI 4K, SD reader, and 100W PD charging."
+  },
+  {
+    "id": "prod_006",
+    "name": "Desk Mat Studio",
+    "category": "Accessories",
+    "price": 20.00,
+    "in_stock": true,
+    "description": "Water-resistant vegan leather desk mat for keyboard and mouse."
+  }
+]

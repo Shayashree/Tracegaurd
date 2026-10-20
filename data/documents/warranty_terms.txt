@@ -1,0 +1,8 @@
+TraceGuard Hardware Warranty Terms
+Document ID: DOC-WARRANTY-003
+Last Updated: January 2026
+
+1. Warranty Coverage: All TraceGuard certified peripheral hardware items come with a 1-year limited manufacturer warranty.
+2. What is Covered: Defects in materials and workmanship under standard personal or office use.
+3. What is Not Covered: Accidental liquid spills, cosmetic wear and tear, unauthorized firmware modifications, or misuse.
+4. Warranty Claims: Submit claims with serial number and proof of purchase to support@traceguard.local. Replacement units are dispatched within 3 business days of claim validation.

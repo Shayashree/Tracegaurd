@@ -1,0 +1,8 @@
+TraceGuard Technologies Overview
+Document ID: DOC-ABOUT-004
+Established: 2024
+
+TraceGuard is an experimental reliability engineering and observability platform designed for autonomous tool-using AI agents.
+Our mission is to make LLM agents deterministic, auditable, and resilient by providing deep execution tracing, semantic state inspection, and targeted failure recovery without modifying underlying model weights.
+Headquarters: Seattle, WA.
+Contact: contact@traceguard.local
