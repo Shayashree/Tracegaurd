@@ -3,7 +3,7 @@ import json
 import logging
 import time
 import uuid
-from typing import List, Optional
+from typing import Any, List, Optional
 from backend.agents.mock_model import MockModelAdapter
 from backend.agents.model_adapter import BaseModelAdapter, OpenAIModelAdapter
 from backend.agents.tool_registry import ToolExecutor, ToolRegistry
