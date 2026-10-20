@@ -27,15 +27,21 @@ class TraceStorage:
                 candidates = [
                     Path(BASE_DIR) / "data" / "traceguard.db",
                     Path(BASE_DIR) / "traceguard.db",
+                    Path(__file__).resolve().parent.parent / "data" / "traceguard.db",
+                    Path(__file__).resolve().parent.parent / "traceguard.db",
+                    Path.cwd() / "data" / "traceguard.db",
+                    Path.cwd() / "traceguard.db",
+                    Path("/var/task") / "data" / "traceguard.db",
+                    Path("/var/task") / "traceguard.db",
                 ]
                 for cand in candidates:
-                    if cand.exists():
-                        try:
+                    try:
+                        if cand.exists():
                             shutil.copyfile(str(cand), str(tmp_db))
                             logger.info(f"Initialized Vercel SQLite storage at {tmp_db} from {cand}")
                             break
-                        except Exception as e:
-                            logger.warning(f"Could not copy seed database to {tmp_db}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Could not copy seed database from {cand} to {tmp_db}: {e}")
             self.db_path = str(tmp_db)
         else:
             self.db_path = db_path or settings.DATABASE_PATH
@@ -59,241 +65,244 @@ class TraceStorage:
 
     def _init_db(self) -> None:
         """Create tables if they do not exist."""
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        with self._lock, self._connection() as conn:
-            cursor = conn.cursor()
-            # Tasks table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS tasks (
-                    task_id TEXT PRIMARY KEY,
-                    run_id TEXT NOT NULL,
-                    task TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    final_answer TEXT,
-                    error_info TEXT,
-                    verification_json TEXT,
-                    steps_count INTEGER DEFAULT 0,
-                    duration_ms REAL DEFAULT 0.0,
-                    created_at TEXT NOT NULL,
-                    completed_at TEXT
-                )
-            """)
-            # Traces table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS trace_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    task_id TEXT NOT NULL,
-                    run_id TEXT NOT NULL,
-                    step_index INTEGER NOT NULL,
-                    event_type TEXT NOT NULL,
-                    tool_name TEXT,
-                    status TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    duration_ms REAL,
-                    input_summary TEXT,
-                    output_summary TEXT,
-                    error_type TEXT,
-                    model_tokens_json TEXT,
-                    FOREIGN KEY(task_id) REFERENCES tasks(task_id)
-                )
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_trace_events_task_id 
-                ON trace_events(task_id, id)
-            """)
-            # Milestone 2: Experiments table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS experiments (
-                    experiment_id TEXT PRIMARY KEY,
-                    benchmark_version TEXT NOT NULL,
-                    agent_mode TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    config_json TEXT,
-                    total_tasks INTEGER DEFAULT 0,
-                    completed_tasks INTEGER DEFAULT 0,
-                    created_at TEXT NOT NULL,
-                    completed_at TEXT
-                )
-            """)
-            # Milestone 2: Experiment Results table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS experiment_results (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    experiment_id TEXT NOT NULL,
-                    task_id TEXT NOT NULL,
-                    run_id TEXT NOT NULL,
-                    benchmark_version TEXT NOT NULL,
-                    agent_mode TEXT NOT NULL,
-                    terminal_status TEXT NOT NULL,
-                    expected_answer TEXT,
-                    observed_answer TEXT,
-                    verification_status TEXT NOT NULL,
-                    verification_message TEXT,
-                    step_count INTEGER DEFAULT 0,
-                    tool_call_count INTEGER DEFAULT 0,
-                    tool_error_count INTEGER DEFAULT 0,
-                    total_duration_ms REAL DEFAULT 0.0,
-                    model_tokens_json TEXT,
-                    estimated_cost REAL,
-                    trace_reference_json TEXT,
-                    failure_scenario_id TEXT,
-                    started_at TEXT NOT NULL,
-                    completed_at TEXT NOT NULL,
-                    FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id)
-                )
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_exp_results_exp_id 
-                ON experiment_results(experiment_id, id)
-            """)
-            # Milestone 2: Experiment Metrics table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS experiment_metrics (
-                    experiment_id TEXT PRIMARY KEY,
-                    metrics_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id)
-                )
-            """)
-            # Milestone 3: Diagnostic Reports table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS diagnostic_reports (
-                    diagnostic_id TEXT PRIMARY KEY,
-                    experiment_id TEXT,
-                    task_id TEXT NOT NULL,
-                    run_id TEXT NOT NULL,
-                    detector_version TEXT NOT NULL,
-                    diagnostic_status TEXT NOT NULL,
-                    primary_failure_category TEXT,
-                    severity TEXT NOT NULL,
-                    confirmation_status TEXT NOT NULL,
-                    analysis_duration_ms REAL,
-                    report_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_diag_run_id 
-                ON diagnostic_reports(run_id)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_diag_task_id 
-                ON diagnostic_reports(task_id)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_diag_experiment_id 
-                ON diagnostic_reports(experiment_id)
-            """)
-            # Milestone 3: Diagnostic Findings table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS diagnostic_findings (
-                    finding_id TEXT PRIMARY KEY,
-                    diagnostic_id TEXT NOT NULL,
-                    rule_id TEXT NOT NULL,
-                    failure_category TEXT NOT NULL,
-                    severity TEXT NOT NULL,
-                    confirmation_status TEXT NOT NULL,
-                    explanation TEXT,
-                    recommended_next_action TEXT,
-                    FOREIGN KEY(diagnostic_id) REFERENCES diagnostic_reports(diagnostic_id)
-                )
-            """)
+        try:
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+            with self._lock, self._connection() as conn:
+                cursor = conn.cursor()
+                # Tasks table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS tasks (
+                        task_id TEXT PRIMARY KEY,
+                        run_id TEXT NOT NULL,
+                        task TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        final_answer TEXT,
+                        error_info TEXT,
+                        verification_json TEXT,
+                        steps_count INTEGER DEFAULT 0,
+                        duration_ms REAL DEFAULT 0.0,
+                        created_at TEXT NOT NULL,
+                        completed_at TEXT
+                    )
+                """)
+                # Traces table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS trace_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        task_id TEXT NOT NULL,
+                        run_id TEXT NOT NULL,
+                        step_index INTEGER NOT NULL,
+                        event_type TEXT NOT NULL,
+                        tool_name TEXT,
+                        status TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        duration_ms REAL,
+                        input_summary TEXT,
+                        output_summary TEXT,
+                        error_type TEXT,
+                        model_tokens_json TEXT,
+                        FOREIGN KEY(task_id) REFERENCES tasks(task_id)
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_trace_events_task_id 
+                    ON trace_events(task_id, id)
+                """)
+                # Milestone 2: Experiments table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS experiments (
+                        experiment_id TEXT PRIMARY KEY,
+                        benchmark_version TEXT NOT NULL,
+                        agent_mode TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        config_json TEXT,
+                        total_tasks INTEGER DEFAULT 0,
+                        completed_tasks INTEGER DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        completed_at TEXT
+                    )
+                """)
+                # Milestone 2: Experiment Results table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS experiment_results (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        experiment_id TEXT NOT NULL,
+                        task_id TEXT NOT NULL,
+                        run_id TEXT NOT NULL,
+                        benchmark_version TEXT NOT NULL,
+                        agent_mode TEXT NOT NULL,
+                        terminal_status TEXT NOT NULL,
+                        expected_answer TEXT,
+                        observed_answer TEXT,
+                        verification_status TEXT NOT NULL,
+                        verification_message TEXT,
+                        step_count INTEGER DEFAULT 0,
+                        tool_call_count INTEGER DEFAULT 0,
+                        tool_error_count INTEGER DEFAULT 0,
+                        total_duration_ms REAL DEFAULT 0.0,
+                        model_tokens_json TEXT,
+                        estimated_cost REAL,
+                        trace_reference_json TEXT,
+                        failure_scenario_id TEXT,
+                        started_at TEXT NOT NULL,
+                        completed_at TEXT NOT NULL,
+                        FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id)
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_exp_results_exp_id 
+                    ON experiment_results(experiment_id, id)
+                """)
+                # Milestone 2: Experiment Metrics table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS experiment_metrics (
+                        experiment_id TEXT PRIMARY KEY,
+                        metrics_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id)
+                    )
+                """)
+                # Milestone 3: Diagnostic Reports table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS diagnostic_reports (
+                        diagnostic_id TEXT PRIMARY KEY,
+                        experiment_id TEXT,
+                        task_id TEXT NOT NULL,
+                        run_id TEXT NOT NULL,
+                        detector_version TEXT NOT NULL,
+                        diagnostic_status TEXT NOT NULL,
+                        primary_failure_category TEXT,
+                        severity TEXT NOT NULL,
+                        confirmation_status TEXT NOT NULL,
+                        analysis_duration_ms REAL,
+                        report_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_diag_run_id 
+                    ON diagnostic_reports(run_id)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_diag_task_id 
+                    ON diagnostic_reports(task_id)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_diag_experiment_id 
+                    ON diagnostic_reports(experiment_id)
+                """)
+                # Milestone 3: Diagnostic Findings table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS diagnostic_findings (
+                        finding_id TEXT PRIMARY KEY,
+                        diagnostic_id TEXT NOT NULL,
+                        rule_id TEXT NOT NULL,
+                        failure_category TEXT NOT NULL,
+                        severity TEXT NOT NULL,
+                        confirmation_status TEXT NOT NULL,
+                        explanation TEXT,
+                        recommended_next_action TEXT,
+                        FOREIGN KEY(diagnostic_id) REFERENCES diagnostic_reports(diagnostic_id)
+                    )
+                """)
 
-            # Milestone 4: Recovery Reports table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS recovery_reports (
-                    recovery_id TEXT PRIMARY KEY,
-                    task_id TEXT NOT NULL,
-                    run_id TEXT NOT NULL,
-                    recovery_attempt_id TEXT NOT NULL,
-                    experiment_id TEXT,
-                    policy_id TEXT NOT NULL,
-                    policy_version TEXT NOT NULL,
-                    initial_failure_category TEXT,
-                    terminal_status TEXT NOT NULL,
-                    original_status TEXT NOT NULL,
-                    original_verification_status TEXT,
-                    final_verification_status TEXT,
-                    recovery_attempts_count INTEGER DEFAULT 1,
-                    recovery_duration_ms REAL DEFAULT 0.0,
-                    additional_tool_calls INTEGER DEFAULT 0,
-                    additional_model_calls INTEGER DEFAULT 0,
-                    budget_used_json TEXT,
-                    final_answer TEXT,
-                    report_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY(task_id) REFERENCES tasks(task_id)
-                )
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_recovery_task_id 
-                ON recovery_reports(task_id)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_recovery_run_id 
-                ON recovery_reports(run_id)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_recovery_experiment_id 
-                ON recovery_reports(experiment_id)
-            """)
+                # Milestone 4: Recovery Reports table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS recovery_reports (
+                        recovery_id TEXT PRIMARY KEY,
+                        task_id TEXT NOT NULL,
+                        run_id TEXT NOT NULL,
+                        recovery_attempt_id TEXT NOT NULL,
+                        experiment_id TEXT,
+                        policy_id TEXT NOT NULL,
+                        policy_version TEXT NOT NULL,
+                        initial_failure_category TEXT,
+                        terminal_status TEXT NOT NULL,
+                        original_status TEXT NOT NULL,
+                        original_verification_status TEXT,
+                        final_verification_status TEXT,
+                        recovery_attempts_count INTEGER DEFAULT 1,
+                        recovery_duration_ms REAL DEFAULT 0.0,
+                        additional_tool_calls INTEGER DEFAULT 0,
+                        additional_model_calls INTEGER DEFAULT 0,
+                        budget_used_json TEXT,
+                        final_answer TEXT,
+                        report_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY(task_id) REFERENCES tasks(task_id)
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_recovery_task_id 
+                    ON recovery_reports(task_id)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_recovery_run_id 
+                    ON recovery_reports(run_id)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_recovery_experiment_id 
+                    ON recovery_reports(experiment_id)
+                """)
 
-            # Milestone 4: Recovery Attempts table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS recovery_attempts (
-                    attempt_id TEXT PRIMARY KEY,
-                    recovery_id TEXT NOT NULL,
-                    task_id TEXT NOT NULL,
-                    run_id TEXT NOT NULL,
-                    attempt_index INTEGER NOT NULL,
-                    policy_id TEXT NOT NULL,
-                    action_type TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    duration_ms REAL DEFAULT 0.0,
-                    error_info TEXT,
-                    attempt_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY(recovery_id) REFERENCES recovery_reports(recovery_id)
-                )
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_attempts_recovery_id 
-                ON recovery_attempts(recovery_id)
-            """)
+                # Milestone 4: Recovery Attempts table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS recovery_attempts (
+                        attempt_id TEXT PRIMARY KEY,
+                        recovery_id TEXT NOT NULL,
+                        task_id TEXT NOT NULL,
+                        run_id TEXT NOT NULL,
+                        attempt_index INTEGER NOT NULL,
+                        policy_id TEXT NOT NULL,
+                        action_type TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        duration_ms REAL DEFAULT 0.0,
+                        error_info TEXT,
+                        attempt_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY(recovery_id) REFERENCES recovery_reports(recovery_id)
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_attempts_recovery_id 
+                    ON recovery_attempts(recovery_id)
+                """)
 
-            # Milestone 5: Experiment Artifacts table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS experiment_artifacts (
-                    experiment_id TEXT PRIMARY KEY,
-                    configuration_hash TEXT,
-                    manifest_json TEXT,
-                    report_markdown TEXT,
-                    comparisons_json TEXT,
-                    failure_analysis_json TEXT,
-                    ablation_json TEXT,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id)
-                )
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_exp_artifacts_exp_id 
-                ON experiment_artifacts(experiment_id)
-            """)
+                # Milestone 5: Experiment Artifacts table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS experiment_artifacts (
+                        experiment_id TEXT PRIMARY KEY,
+                        configuration_hash TEXT,
+                        manifest_json TEXT,
+                        report_markdown TEXT,
+                        comparisons_json TEXT,
+                        failure_analysis_json TEXT,
+                        ablation_json TEXT,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id)
+                    )
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_exp_artifacts_exp_id 
+                    ON experiment_artifacts(experiment_id)
+                """)
 
-            # Safe migrations for trace_events recovery columns
-            for col, col_type in [
-                ("recovery_attempt_id", "TEXT"),
-                ("policy_id", "TEXT"),
-                ("action_type", "TEXT"),
-                ("finding_ids_json", "TEXT"),
-                ("remaining_budget_json", "TEXT"),
-            ]:
-                try:
-                    cursor.execute(f"ALTER TABLE trace_events ADD COLUMN {col} {col_type}")
-                except sqlite3.OperationalError:
-                    pass
+                # Safe migrations for trace_events recovery columns
+                for col, col_type in [
+                    ("recovery_attempt_id", "TEXT"),
+                    ("policy_id", "TEXT"),
+                    ("action_type", "TEXT"),
+                    ("finding_ids_json", "TEXT"),
+                    ("remaining_budget_json", "TEXT"),
+                ]:
+                    try:
+                        cursor.execute(f"ALTER TABLE trace_events ADD COLUMN {col} {col_type}")
+                    except sqlite3.OperationalError:
+                        pass
 
-            conn.commit()
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Advisory during _init_db on {self.db_path}: {e}")
 
     def save_task(self, task: TaskResponse) -> None:
         """Upsert a task record."""

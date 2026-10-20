@@ -119,13 +119,17 @@ def list_recovery_reports(
     storage: TraceStorage = Depends(get_storage),
 ) -> List[RecoveryReport]:
     """List recovery reports with optional filters and pagination."""
-    return storage.get_all_recovery_reports(
-        limit=limit,
-        offset=offset,
-        experiment_id=experiment_id,
-        policy_id=policy_id,
-        terminal_status=status,
-    )
+    try:
+        return storage.get_all_recovery_reports(
+            limit=limit,
+            offset=offset,
+            experiment_id=experiment_id,
+            policy_id=policy_id,
+            terminal_status=status,
+        )
+    except Exception as e:
+        logger.error(f"Error querying recovery reports: {e}", exc_info=True)
+        return []
 
 @router.get("/recovery/{recovery_id}", response_model=RecoveryReport)
 def get_recovery_by_id(

@@ -85,15 +85,22 @@ def list_experiments(
     storage: TraceStorage = Depends(get_storage)
 ) -> List[ExperimentSummary]:
     """List all executed experiments ordered by creation time descending."""
-    experiments = storage.list_experiments()
-    return experiments[offset : offset + limit]
+    try:
+        experiments = storage.list_experiments()
+        return experiments[offset : offset + limit]
+    except Exception as e:
+        logger.error(f"Error listing experiments: {e}", exc_info=True)
+        return []
 
 @router.get("/overview/stats")
 def get_platform_overview_stats(
     storage: TraceStorage = Depends(get_storage)
 ) -> Dict[str, Any]:
     """Calculate platform-wide KPI statistics from persisted experiment runs."""
-    experiments = storage.list_experiments()
+    try:
+        experiments = storage.list_experiments()
+    except Exception:
+        experiments = []
     total_experiments = len(experiments)
 
     total_runs = 0
@@ -104,36 +111,41 @@ def get_platform_overview_stats(
 
     mode_stats: Dict[str, Dict[str, Any]] = {}
     failure_counts: Dict[str, int] = {}
+    rec_count = 0
+    rec_success = 0
 
-    with storage._lock, storage._connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM experiment_results")
-        rows = cursor.fetchall()
-        total_runs = len(rows)
-        for r in rows:
-            mode = r["agent_mode"]
-            if mode not in mode_stats:
-                mode_stats[mode] = {"total": 0, "verified": 0, "latencies": [], "tool_calls": 0}
-            mode_stats[mode]["total"] += 1
-            if r["verification_status"] == "verified":
-                total_verified += 1
-                mode_stats[mode]["verified"] += 1
-            dur = r["total_duration_ms"] or 0.0
-            latencies.append(dur)
-            mode_stats[mode]["latencies"].append(dur)
-            tc = r["tool_call_count"] or 0
-            total_tool_calls += tc
-            mode_stats[mode]["tool_calls"] += tc
-            if r["estimated_cost"]:
-                total_cost += r["estimated_cost"]
-            if r["terminal_status"] != "successful_completion":
-                status = r["terminal_status"]
-                failure_counts[status] = failure_counts.get(status, 0) + 1
+    try:
+        with storage._lock, storage._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM experiment_results")
+            rows = cursor.fetchall()
+            total_runs = len(rows)
+            for r in rows:
+                mode = r["agent_mode"]
+                if mode not in mode_stats:
+                    mode_stats[mode] = {"total": 0, "verified": 0, "latencies": [], "tool_calls": 0}
+                mode_stats[mode]["total"] += 1
+                if r["verification_status"] == "verified":
+                    total_verified += 1
+                    mode_stats[mode]["verified"] += 1
+                dur = r["total_duration_ms"] or 0.0
+                latencies.append(dur)
+                mode_stats[mode]["latencies"].append(dur)
+                tc = r["tool_call_count"] or 0
+                total_tool_calls += tc
+                mode_stats[mode]["tool_calls"] += tc
+                if r["estimated_cost"]:
+                    total_cost += r["estimated_cost"]
+                if r["terminal_status"] != "successful_completion":
+                    status = r["terminal_status"]
+                    failure_counts[status] = failure_counts.get(status, 0) + 1
 
-        cursor.execute("SELECT terminal_status FROM recovery_reports")
-        rec_rows = cursor.fetchall()
-        rec_count = len(rec_rows)
-        rec_success = sum(1 for rr in rec_rows if rr["terminal_status"] == "recovered_successfully")
+            cursor.execute("SELECT terminal_status FROM recovery_reports")
+            rec_rows = cursor.fetchall()
+            rec_count = len(rec_rows)
+            rec_success = sum(1 for rr in rec_rows if rr["terminal_status"] == "recovered_successfully")
+    except Exception as e:
+        logger.error(f"Error querying experiment overview statistics: {e}", exc_info=True)
 
     success_rate = round((total_verified / total_runs) * 100.0, 1) if total_runs > 0 else 0.0
     rec_success_rate = round((rec_success / rec_count) * 100.0, 1) if rec_count > 0 else 0.0

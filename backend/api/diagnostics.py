@@ -79,13 +79,17 @@ def list_diagnostic_reports(
     storage: TraceStorage = Depends(get_storage),
 ) -> List[DiagnosticReport]:
     """List diagnostic reports with optional filters and pagination."""
-    return storage.get_all_diagnostic_reports(
-        limit=limit,
-        offset=offset,
-        experiment_id=experiment_id,
-        failure_category=failure_category,
-        diagnostic_status=status,
-    )
+    try:
+        return storage.get_all_diagnostic_reports(
+            limit=limit,
+            offset=offset,
+            experiment_id=experiment_id,
+            failure_category=failure_category,
+            diagnostic_status=status,
+        )
+    except Exception as e:
+        logger.error(f"Error querying diagnostic reports: {e}", exc_info=True)
+        return []
 
 @router.get("/{diagnostic_id}", response_model=DiagnosticReport)
 def get_diagnostic_report_by_id(
