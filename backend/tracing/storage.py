@@ -7,23 +7,30 @@ from typing import Any, Dict, List, Optional
 from backend.config import settings
 from backend.models.schemas import TaskResponse, TraceEvent, VerificationResult
 
+from contextlib import contextmanager
+
 class TraceStorage:
     """Manages SQLite persistence and JSONL export for tasks and traces."""
 
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or settings.DATABASE_PATH
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._init_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+    @contextmanager
+    def _connection(self):
+        conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=15.0)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_db(self) -> None:
         """Create tables if they do not exist."""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        with self._lock, self._get_connection() as conn:
+        with self._lock, self._connection() as conn:
             cursor = conn.cursor()
             # Tasks table
             cursor.execute("""
@@ -64,12 +71,66 @@ class TraceStorage:
                 CREATE INDEX IF NOT EXISTS idx_trace_events_task_id 
                 ON trace_events(task_id, id)
             """)
+            # Milestone 2: Experiments table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS experiments (
+                    experiment_id TEXT PRIMARY KEY,
+                    benchmark_version TEXT NOT NULL,
+                    agent_mode TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    config_json TEXT,
+                    total_tasks INTEGER DEFAULT 0,
+                    completed_tasks INTEGER DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    completed_at TEXT
+                )
+            """)
+            # Milestone 2: Experiment Results table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    experiment_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    benchmark_version TEXT NOT NULL,
+                    agent_mode TEXT NOT NULL,
+                    terminal_status TEXT NOT NULL,
+                    expected_answer TEXT,
+                    observed_answer TEXT,
+                    verification_status TEXT NOT NULL,
+                    verification_message TEXT,
+                    step_count INTEGER DEFAULT 0,
+                    tool_call_count INTEGER DEFAULT 0,
+                    tool_error_count INTEGER DEFAULT 0,
+                    total_duration_ms REAL DEFAULT 0.0,
+                    model_tokens_json TEXT,
+                    estimated_cost REAL,
+                    trace_reference_json TEXT,
+                    failure_scenario_id TEXT,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exp_results_exp_id 
+                ON experiment_results(experiment_id, id)
+            """)
+            # Milestone 2: Experiment Metrics table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_metrics (
+                    experiment_id TEXT PRIMARY KEY,
+                    metrics_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id)
+                )
+            """)
             conn.commit()
 
     def save_task(self, task: TaskResponse) -> None:
         """Upsert a task record."""
         verif_json = task.verification.model_dump_json() if task.verification else None
-        with self._lock, self._get_connection() as conn:
+        with self._lock, self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO tasks (
@@ -101,7 +162,7 @@ class TraceStorage:
 
     def get_task(self, task_id: str) -> Optional[TaskResponse]:
         """Retrieve task by task_id."""
-        with self._lock, self._get_connection() as conn:
+        with self._lock, self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,))
             row = cursor.fetchone()
@@ -146,7 +207,7 @@ class TraceStorage:
             )
             for e in events
         ]
-        with self._lock, self._get_connection() as conn:
+        with self._lock, self._connection() as conn:
             cursor = conn.cursor()
             cursor.executemany("""
                 INSERT INTO trace_events (
@@ -159,7 +220,7 @@ class TraceStorage:
 
     def get_events(self, task_id: str) -> List[TraceEvent]:
         """Get ordered execution trace events for a given task."""
-        with self._lock, self._get_connection() as conn:
+        with self._lock, self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT task_id, run_id, step_index, event_type, tool_name, status,
@@ -194,3 +255,195 @@ class TraceStorage:
         events = self.get_events(task_id)
         lines = [e.model_dump_json() for e in events]
         return "\n".join(lines) + ("\n" if lines else "")
+
+    # -----------------------------------------------------------------------
+    # Milestone 2: Experiment Storage
+    # -----------------------------------------------------------------------
+
+    def save_experiment(self, exp: Any) -> None:
+        """Upsert experiment record."""
+        config_str = json.dumps(exp.config) if hasattr(exp, "config") and exp.config else "{}"
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO experiments (
+                    experiment_id, benchmark_version, agent_mode, status,
+                    config_json, total_tasks, completed_tasks, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(experiment_id) DO UPDATE SET
+                    status=excluded.status,
+                    total_tasks=excluded.total_tasks,
+                    completed_tasks=excluded.completed_tasks,
+                    completed_at=excluded.completed_at
+            """, (
+                exp.experiment_id,
+                exp.benchmark_version,
+                exp.agent_mode,
+                exp.status,
+                config_str,
+                exp.total_tasks,
+                exp.completed_tasks,
+                exp.created_at,
+                exp.completed_at,
+            ))
+            conn.commit()
+
+    def get_experiment(self, experiment_id: str) -> Optional[Any]:
+        """Fetch experiment metadata by experiment_id."""
+        from backend.evaluation.schemas import ExperimentSummary
+        row = None
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM experiments WHERE experiment_id = ?", (experiment_id,))
+            row = cursor.fetchone()
+        if not row:
+            return None
+        cfg = json.loads(row["config_json"]) if row["config_json"] else {}
+        metrics = self.get_experiment_metrics(experiment_id)
+        return ExperimentSummary(
+            experiment_id=row["experiment_id"],
+            benchmark_version=row["benchmark_version"],
+            agent_mode=row["agent_mode"],
+            status=row["status"],
+            total_tasks=row["total_tasks"],
+            completed_tasks=row["completed_tasks"],
+            created_at=row["created_at"],
+            completed_at=row["completed_at"],
+            config=cfg,
+            metrics=metrics,
+        )
+
+    def list_experiments(self) -> List[Any]:
+        """List all experiments ordered by creation time descending."""
+        from backend.evaluation.schemas import ExperimentSummary
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM experiments ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+            summaries = []
+            for row in rows:
+                cfg = json.loads(row["config_json"]) if row["config_json"] else {}
+                summaries.append(ExperimentSummary(
+                    experiment_id=row["experiment_id"],
+                    benchmark_version=row["benchmark_version"],
+                    agent_mode=row["agent_mode"],
+                    status=row["status"],
+                    total_tasks=row["total_tasks"],
+                    completed_tasks=row["completed_tasks"],
+                    created_at=row["created_at"],
+                    completed_at=row["completed_at"],
+                    config=cfg,
+                    metrics=None,
+                ))
+            return summaries
+
+    def save_experiment_results(self, results: List[Any]) -> None:
+        """Batch insert task execution results for an experiment."""
+        if not results:
+            return
+        records = [
+            (
+                r.experiment_id,
+                r.task_id,
+                r.run_id,
+                r.benchmark_version,
+                r.agent_mode,
+                r.terminal_status,
+                json.dumps(r.expected_answer) if r.expected_answer is not None else None,
+                r.observed_answer,
+                r.verification_status,
+                r.verification_message,
+                r.step_count,
+                r.tool_call_count,
+                r.tool_error_count,
+                r.total_duration_ms,
+                json.dumps(r.model_tokens) if r.model_tokens else None,
+                r.estimated_cost,
+                json.dumps(r.trace_reference) if r.trace_reference else None,
+                r.failure_scenario_id,
+                r.started_at,
+                r.completed_at,
+            )
+            for r in results
+        ]
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.executemany("""
+                INSERT INTO experiment_results (
+                    experiment_id, task_id, run_id, benchmark_version, agent_mode,
+                    terminal_status, expected_answer, observed_answer, verification_status,
+                    verification_message, step_count, tool_call_count, tool_error_count,
+                    total_duration_ms, model_tokens_json, estimated_cost, trace_reference_json,
+                    failure_scenario_id, started_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, records)
+            conn.commit()
+
+    def get_experiment_results(self, experiment_id: str, limit: int = 500, offset: int = 0) -> List[Any]:
+        """Fetch per-task execution results for an experiment."""
+        from backend.evaluation.schemas import TaskExecutionResult
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM experiment_results
+                WHERE experiment_id = ?
+                ORDER BY id ASC
+                LIMIT ? OFFSET ?
+            """, (experiment_id, limit, offset))
+            rows = cursor.fetchall()
+            results = []
+            for r in rows:
+                tokens = json.loads(r["model_tokens_json"]) if r["model_tokens_json"] else None
+                trace_ref = json.loads(r["trace_reference_json"]) if r["trace_reference_json"] else {}
+                expected = json.loads(r["expected_answer"]) if r["expected_answer"] is not None else None
+                results.append(TaskExecutionResult(
+                    experiment_id=r["experiment_id"],
+                    task_id=r["task_id"],
+                    run_id=r["run_id"],
+                    benchmark_version=r["benchmark_version"],
+                    agent_mode=r["agent_mode"],
+                    started_at=r["started_at"],
+                    completed_at=r["completed_at"],
+                    terminal_status=r["terminal_status"],
+                    expected_answer=expected,
+                    observed_answer=r["observed_answer"],
+                    verification_status=r["verification_status"],
+                    verification_message=r["verification_message"],
+                    step_count=r["step_count"],
+                    tool_call_count=r["tool_call_count"],
+                    tool_error_count=r["tool_error_count"],
+                    total_duration_ms=r["total_duration_ms"],
+                    model_tokens=tokens,
+                    estimated_cost=r["estimated_cost"],
+                    trace_reference=trace_ref,
+                    failure_scenario_id=r["failure_scenario_id"],
+                ))
+            return results
+
+    def save_experiment_metrics(self, experiment_id: str, metrics: Any) -> None:
+        """Persist aggregated experiment metrics."""
+        from backend.tracing.event_schema import current_utc_timestamp
+        metrics_json = metrics.model_dump_json() if hasattr(metrics, "model_dump_json") else json.dumps(metrics)
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO experiment_metrics (experiment_id, metrics_json, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(experiment_id) DO UPDATE SET
+                    metrics_json=excluded.metrics_json,
+                    created_at=excluded.created_at
+            """, (experiment_id, metrics_json, current_utc_timestamp()))
+            conn.commit()
+
+    def get_experiment_metrics(self, experiment_id: str) -> Optional[Any]:
+        """Fetch aggregated experiment metrics."""
+        from backend.evaluation.schemas import EvaluationMetrics
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT metrics_json FROM experiment_metrics WHERE experiment_id = ?", (experiment_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            data = json.loads(row["metrics_json"])
+            return EvaluationMetrics.model_validate(data)
+

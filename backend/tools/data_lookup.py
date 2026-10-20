@@ -78,8 +78,8 @@ class DataLookupTool(BaseTool):
                 iid = item.get("id", "").lower()
                 cat = item.get("category", "").lower()
 
-                # If full query matches directly
-                if q in name or q in desc or q in iid or q in cat:
+                # If full query matches directly or query contains product name
+                if q in name or name in q or q in desc or q in iid or q in cat:
                     if item["id"] not in seen_ids:
                         matched_items.append(item)
                         seen_ids.add(item["id"])
@@ -87,7 +87,7 @@ class DataLookupTool(BaseTool):
 
                 # Or if any sub-query matches
                 for sq in sub_queries:
-                    if sq and (sq in name or sq in desc or sq in iid):
+                    if sq and (sq in name or name in sq or sq in desc or sq in iid):
                         if item["id"] not in seen_ids:
                             matched_items.append(item)
                             seen_ids.add(item["id"])

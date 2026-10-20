@@ -198,7 +198,42 @@ class AgentController:
                 arguments_summary=args_str
             )
 
-            tool_result = self.tool_executor.execute(tool_call, allowed_tools=allowed_tools)
+            try:
+                tool_result = self.tool_executor.execute(tool_call, allowed_tools=allowed_tools)
+            except TimeoutError as te:
+                task_status = "failed"
+                error_info = f"Tool execution timed out: {str(te)}"
+                collector.record_tool_exec_failed(
+                    step_index=step_index,
+                    tool_name=tool_call.tool_name,
+                    error_message=error_info,
+                    duration_ms=0.0,
+                    error_type="ToolTimeoutError"
+                )
+                collector.record_task_failed(
+                    step_index=step_index,
+                    error_message=error_info,
+                    duration_ms=(time.perf_counter() - start_perf_time) * 1000,
+                    error_type="ToolTimeoutError"
+                )
+                break
+            except Exception as e:
+                task_status = "failed"
+                error_info = f"Tool execution failed: {str(e)}"
+                collector.record_tool_exec_failed(
+                    step_index=step_index,
+                    tool_name=tool_call.tool_name,
+                    error_message=error_info,
+                    duration_ms=0.0,
+                    error_type="ToolExecutionError"
+                )
+                collector.record_task_failed(
+                    step_index=step_index,
+                    error_message=error_info,
+                    duration_ms=(time.perf_counter() - start_perf_time) * 1000,
+                    error_type="ToolExecutionError"
+                )
+                break
 
             if tool_result.success:
                 result_str = json.dumps(tool_result.data) if tool_result.data is not None else "Success"
