@@ -1,0 +1,30 @@
+flowchart LR
+    classDef step fill:#0f172a,stroke:#38bdf8,color:#f8fafc;
+    classDef exp fill:#1e1b4b,stroke:#818cf8,color:#f8fafc;
+    classDef metric fill:#064e3b,stroke:#34d399,color:#f8fafc;
+    classDef out fill:#451a03,stroke:#f59e0b,color:#f8fafc;
+
+    Config["ExperimentConfig\n(Benchmark v1.0, Split, Modes, Seed)"]:::step --> Runner["FullExperimentRunner"]:::exp
+
+    subgraph Modes["Execution Modes Evaluated on Identical Task Split"]
+        Runner --> M1["Baseline Agent\n(Zero Interventions)"]:::exp
+        Runner --> M2["Fixed-Retry Agent\n(Naive Step Retry)"]:::exp
+        Runner --> M3["TraceGuard Agent\n(Trajectory Diagnosis + Targeted Policy)"]:::exp
+    end
+
+    M1 --> Evaluate["Independent Outcome Verifier"]:::step
+    M2 --> Evaluate
+    M3 --> Evaluate
+
+    Evaluate --> MetricsEngine["Statistical Analysis & Metrics Engine"]:::metric
+
+    subgraph MetricsOutput["Comparative Evaluation Results"]
+        MetricsEngine --> SR["Success Rate by Mode\n(Exact / Numerical Verification)"]:::metric
+        MetricsEngine --> DR["Detector Precision / Recall / F1"]:::metric
+        MetricsEngine --> RR["Recovery Rate & Net Lift"]:::metric
+        MetricsEngine --> Overhead["Overhead: Latency & Tool Count Ratios"]:::metric
+        MetricsEngine --> StatTests["McNemar's Test & Paired T-Tests (p-values)"]:::metric
+    end
+
+    MetricsOutput --> Persist["SQLite Storage & Manifest Generator"]:::out
+    Persist --> ReportMD["Markdown Research Report & JSON Export"]:::out

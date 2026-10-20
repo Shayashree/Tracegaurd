@@ -1,6 +1,6 @@
 # TraceGuard: An Evidence-Driven Reliability and Recovery Platform for Tool-Using AI Agents
 
-**Milestones 1–5: Baseline Agent, Benchmark Framework, Trajectory Failure Detector, Failure-Specific Recovery Engine, & Experimental Evaluation Framework**
+**Milestones 1–7: Baseline Agent, Benchmark Framework, Trajectory Failure Detector, Failure-Specific Recovery Engine, Experimental Evaluation Framework, Interactive Dashboard, & Production Readiness**
 
 TraceGuard is a research and reliability engineering platform designed for autonomous, tool-using AI agents.
 
@@ -8,7 +8,9 @@ TraceGuard is a research and reliability engineering platform designed for auton
 - **Milestone 2** introduced a reproducible, versioned benchmark dataset (44 tasks across 5 categories), a failure-injection framework covering 8 controlled failure modes, an experiment execution runner, robust evaluation metrics with Wilson score confidence intervals, and machine-readable experiment export endpoints.
 - **Milestone 3** delivered a modular, trajectory-based failure detection engine (`backend/reliability/`) that extracts deterministic execution features, evaluates explainable detection rules (R1–R9), distinguishes observable failure patterns from unverified completions, supports both offline and live passive observation, and calculates detection precision, recall, and F1 metrics.
 - **Milestone 4** implemented an intelligent, bounded, failure-specific recovery engine (`backend/reliability/`) that consumes Milestone 3 diagnostic reports, selects and executes targeted recovery policies (Policies A–H), enforces multi-dimensional safety budgets, safely checkpoints state with strict credential redaction, records recovery event trajectories, and independently verifies post-recovery outcomes.
-- **Milestone 5** introduces a comprehensive, reproducible experimental evaluation and statistical comparative analysis framework (`backend/evaluation/`) answering 6 core research questions (RQ1–RQ6) across 5 experiment types (`standard`, `controlled_failure`, `held_out`, `repeated_stability`, `ablation`), evaluating paired hypothesis tests (McNemar exact and asymptotic Chi-Square, bootstrap confidence intervals), computing failure-specific category breakdowns, generating audit-grade reproducibility manifests, and assembling publication-ready Markdown research reports from persisted database records.
+- **Milestone 5** introduced a comprehensive, reproducible experimental evaluation and statistical comparative analysis framework (`backend/evaluation/`) answering 6 core research questions (RQ1–RQ6) across 5 experiment types (`standard`, `controlled_failure`, `held_out`, `repeated_stability`, `ablation`), evaluating paired hypothesis tests (McNemar exact and asymptotic Chi-Square, bootstrap confidence intervals), computing failure-specific category breakdowns, generating audit-grade reproducibility manifests, and assembling publication-ready Markdown research reports from persisted database records.
+- **Milestone 6** integrated the full-stack system with a responsive, modern React 19 + Vite dashboard featuring Overview KPIs, Task Run Inspector, Trace Timeline, Diagnostics Explorer, Recovery Inspector, and Benchmark Comparisons.
+- **Milestone 7** hardens TraceGuard for production deployment, independent reproducibility, and final-year academic project evaluation: containerized multi-stage Docker execution, SQLite WAL mode with atomic online backups, correlation ID tracing middleware, export filename sanitization, continuous integration pipeline (GitHub Actions), 150 automated tests (100% passing), six comprehensive documentation guides, and an 8–10 minute demonstration sequence.
 
 ---
 
@@ -350,7 +352,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 #### Step 1: Start the FastAPI Backend
 From the repository root:
 ```bash
-uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 The backend API and Swagger OpenAPI documentation will be available at:
 - **API Health Check:** `http://127.0.0.1:8000/health`
@@ -365,11 +367,26 @@ npm run dev
 Open your browser to:
 - **Dashboard URL:** `http://localhost:5173`
 
-### 10.5 Running Test Suites
+### 10.5 Containerized Execution with Docker Compose
 
-#### Backend Test Suite (Milestones 1–5 regression test suite)
+To build and run the entire multi-container stack (backend API + Nginx SPA frontend with persistent volume):
 ```bash
-# Run all 143 backend tests
+docker compose up --build
+```
+- **Web Application:** `http://localhost:3000`
+- **Backend API:** `http://localhost:8000`
+- **Health Check:** `http://localhost:8000/health`
+
+To stop services while preserving the SQLite database volume:
+```bash
+docker compose down
+```
+
+### 10.6 Running Test Suites
+
+#### Backend Test Suite (Milestones 1–7 complete test suite)
+```bash
+# Run all 150 backend tests
 python -m pytest
 ```
 
@@ -387,8 +404,38 @@ npm run build
 
 ---
 
-## 11. Known Limitations & Research Threats to Validity
+## 11. Technical Documentation & Architecture Diagrams
 
-1. **Synthetic Deterministic Fixtures:** Core experiments utilize deterministic mock tools and local models to ensure reproducible, zero-cost benchmarking without network drift or external API rate limits.
-2. **Stateless Tool Environments:** Benchmark tools operate in-memory; evaluating stateful real-world environments (e.g. bash file mutations, production database commits) requires sandboxed transactional rollback.
-3. **Paired Statistical Sample Size Requirements:** Paired hypothesis testing requires running multi-mode evaluations over identical benchmark task sets. When evaluating single-mode runs, comparative metrics indicate that a paired baseline is required.
+Comprehensive guides and architecture diagrams are maintained in `docs/`:
+
+1. [Architecture & Subsystems Guide](docs/ARCHITECTURE.md)
+2. [Deployment & Configuration Guide](docs/DEPLOYMENT.md)
+3. [Research Reproducibility Guide](docs/REPRODUCIBILITY.md)
+4. [Security Policy & Threat Model](docs/SECURITY.md)
+5. [Experimental Research Methodology](docs/EXPERIMENTAL_METHODOLOGY.md)
+6. [8–10 Minute Review Demonstration Guide](docs/DEMO_GUIDE.md)
+
+### Architecture Diagrams (Mermaid Source Files)
+- Overall System Architecture: [`docs/diagrams/overall_system_architecture.mmd`](docs/diagrams/overall_system_architecture.mmd)
+- Agent Execution Sequence: [`docs/diagrams/agent_execution_sequence.mmd`](docs/diagrams/agent_execution_sequence.mmd)
+- Failure Detection Workflow: [`docs/diagrams/failure_detection_workflow.mmd`](docs/diagrams/failure_detection_workflow.mmd)
+- Recovery Lifecycle Workflow: [`docs/diagrams/recovery_lifecycle_workflow.mmd`](docs/diagrams/recovery_lifecycle_workflow.mmd)
+- Benchmark Experiment Workflow: [`docs/diagrams/benchmark_experiment_workflow.mmd`](docs/diagrams/benchmark_experiment_workflow.mmd)
+- Deployment Architecture: [`docs/diagrams/deployment_architecture.mmd`](docs/diagrams/deployment_architecture.mmd)
+
+---
+
+## 12. Final Project Handover Status
+
+| Area | Status | Evidence | Remaining Work |
+|---|---|---|---|
+| **Backend API** | **Verified** | 150/150 pytest tests passing (`tests/test_api.py`, `tests/test_milestone7_production.py`). `/health` returns database connectivity and counts. | None. Production-ready. |
+| **Frontend Dashboard** | **Verified** | 11/11 Vitest tests passing; TypeScript compilation and Vite production build verified (`dist/` created). | None. Production-ready. |
+| **Agent Execution** | **Verified** | Verified with deterministic mock model and live OpenAI adapter interface. Step loops, tool dispatch, and event tracking fully verified. | None. |
+| **Failure Detection** | **Verified** | Diagnostic report generation, feature extraction, and rules R1–R9 verified in `tests/test_failure_detector.py`. | None. |
+| **Adaptive Recovery** | **Verified** | Recovery policies, budget exhaustion guards, and verification verified in `tests/test_recovery_engine.py`. | None. |
+| **Evaluation Framework** | **Verified** | 40-task benchmark v1.0, 3 execution modes, McNemar significance tests, and markdown reports verified. | None. |
+| **Security Hardening** | **Verified** | Pydantic input validation, CORS protection, X-Request-ID middleware, export header sanitization, and offline mock safety verified. | None. |
+| **Containerization** | **Partially Verified** | Multi-stage Dockerfiles (`Dockerfile`, `frontend/Dockerfile`), `nginx.conf`, and `docker-compose.yml` authored and syntax-validated. Docker CLI was not installed on local host environment for runtime execution. | Run `docker compose up --build` on target deployment host with Docker Engine installed. |
+| **Documentation** | **Verified** | 6 complete technical documentation guides in `docs/` and 6 Mermaid diagrams in `docs/diagrams/`. | None. |
+

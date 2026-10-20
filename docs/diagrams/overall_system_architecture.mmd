@@ -1,0 +1,63 @@
+graph TD
+    classDef client fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#f8fafc;
+    classDef api fill:#0f172a,stroke:#6366f1,stroke-width:2px,color:#f8fafc;
+    classDef core fill:#111827,stroke:#10b981,stroke-width:2px,color:#f8fafc;
+    classDef store fill:#18181b,stroke:#f59e0b,stroke-width:2px,color:#f8fafc;
+
+    subgraph ClientLayer["Presentation Layer"]
+        UI["React 19 + Vite Dashboard"]:::client
+        CLI["CLI / Benchmark Runner Scripts"]:::client
+    end
+
+    subgraph APILayer["FastAPI Gateway (:8000)"]
+        Router["FastAPI Application (CORS, Request ID Middleware)"]:::api
+        TasksAPI["/tasks Endpoint"]:::api
+        TracesAPI["/tasks/{id}/traces Endpoint"]:::api
+        BenchAPI["/benchmarks Endpoint"]:::api
+        ExpAPI["/experiments Endpoint"]:::api
+        DiagAPI["/diagnostics Endpoint"]:::api
+        RecAPI["/recovery Endpoint"]:::api
+    end
+
+    subgraph CoreEngine["TraceGuard Core Engine"]
+        Agent["Agent Controller"]:::core
+        Registry["Allowlisted Tool Registry"]:::core
+        Tools["Tools: Calculator, Lookup, DocSearch"]:::core
+        Collector["Trace Collector (Structured Event Schema)"]:::core
+        Detector["Trajectory Failure Detector (Rule + Statistical + LLM)"]:::core
+        Recovery["Adaptive Recovery Engine (Targeted Policies)"]:::core
+        Verifier["Independent Outcome Verifier"]:::core
+    end
+
+    subgraph StorageLayer["Data & Persistence Layer"]
+        SQLite[("SQLite 3 (WAL Mode)\ntasks, trace_events, diagnostics,\nrecovery_reports, experiments")]:::store
+        SeedData["Deterministic Mock Datasets\nproducts.json, documents/*.txt"]:::store
+    end
+
+    UI -->|REST API / JSON| Router
+    CLI -->|Direct Controller / REST| Router
+
+    Router --> TasksAPI
+    Router --> TracesAPI
+    Router --> BenchAPI
+    Router --> ExpAPI
+    Router --> DiagAPI
+    Router --> RecAPI
+
+    TasksAPI --> Agent
+    Agent --> Registry
+    Registry --> Tools
+    Agent --> Collector
+    Agent --> Verifier
+
+    DiagAPI --> Detector
+    Detector -->|Analyzes Traces| Collector
+    RecAPI --> Recovery
+    Recovery -->|Interventions| Agent
+    Recovery -->|Post-Verification| Verifier
+
+    Collector -->|Batch Inserts| SQLite
+    Agent -->|Task Records| SQLite
+    Detector -->|Diagnostic Reports| SQLite
+    Recovery -->|Recovery Reports| SQLite
+    Tools --> SeedData

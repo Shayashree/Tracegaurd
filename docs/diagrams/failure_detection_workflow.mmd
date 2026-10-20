@@ -1,0 +1,28 @@
+flowchart TD
+    classDef startNode fill:#0369a1,stroke:#38bdf8,color:#fff;
+    classDef processNode fill:#1e293b,stroke:#64748b,color:#f8fafc;
+    classDef ruleNode fill:#4338ca,stroke:#818cf8,color:#fff;
+    classDef outNode fill:#065f46,stroke:#34d399,color:#fff;
+
+    Start([Recorded Execution Trace]):::startNode --> Extract[Feature Extractor]:::processNode
+
+    subgraph FeatureSet["Observable Trajectory Features"]
+        Extract --> F1["Error Rates & Consecutive Failures"]:::processNode
+        Extract --> F2["Repetition Counter & Loop Fingerprints"]:::processNode
+        Extract --> F3["Step Count vs Budget Ratio"]:::processNode
+        Extract --> F4["Evidence Coverage & Missing Lookups"]:::processNode
+    end
+
+    FeatureSet --> Detectors
+
+    subgraph Detectors["Multi-Layer Detection Engine"]
+        R1["Rule-Based Detector\n(Schema mismatch, budget exhaustion)"]:::ruleNode
+        R2["Statistical Anomaly Detector\n(Latency spikes, repeat cycles)"]:::ruleNode
+        R3["Semantic / Verification Failure Detector\n(Ungrounded claims, math errors)"]:::ruleNode
+    end
+
+    R1 --> Synthesize[Diagnostic Report Synthesizer]:::processNode
+    R2 --> Synthesize
+    R3 --> Synthesize
+
+    Synthesize --> Report([Diagnostic Report\n- Primary Failure Category\n- Confidence Score\n- Observable Evidence Snippets\n- Recommended Recovery Policy]):::outNode

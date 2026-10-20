@@ -1,0 +1,44 @@
+sequenceDiagram
+    autonumber
+    actor User as Client / Benchmark Runner
+    participant Ctrl as Agent Controller
+    participant Coll as Trace Collector
+    participant LLM as Model Adapter (Mock / OpenAI)
+    participant Reg as Tool Registry
+    participant Tool as Target Tool
+    participant Ver as Independent Verifier
+    participant DB as SQLite Storage (WAL)
+
+    User->>Ctrl: Submit Task(prompt, max_steps, verification_rule)
+    Ctrl->>Coll: Initialize Trace(task_id, run_id)
+    Ctrl->>Coll: Record EVENT_TASK_STARTED
+
+    loop Step Loop (step_index < max_steps)
+        Ctrl->>Coll: Record EVENT_MODEL_REQUEST
+        Ctrl->>LLM: Generate Response(history, tool_definitions)
+        LLM-->>Ctrl: ModelResponse(is_final_answer, tool_call)
+
+        alt Proposes Tool Call
+            Ctrl->>Coll: Record EVENT_TOOL_CALL_REQUESTED
+            Ctrl->>Reg: Validate Tool & Arguments
+            alt Valid Allowlisted Tool
+                Ctrl->>Coll: Record EVENT_TOOL_EXEC_STARTED
+                Ctrl->>Tool: Execute(arguments)
+                Tool-->>Ctrl: ToolResult(success, data, error, duration_ms)
+                Ctrl->>Coll: Record EVENT_TOOL_EXEC_COMPLETED
+            else Invalid Tool or Schema Mismatch
+                Ctrl->>Coll: Record EVENT_TOOL_EXEC_FAILED
+            end
+        else Proposes Final Answer
+            Ctrl->>Coll: Record EVENT_FINAL_ANSWER_PROPOSED
+            Ctrl->>Ver: Verify Answer(final_answer, verification_rule)
+            Ver-->>Ctrl: VerificationResult(verified, status, diff)
+            Ctrl->>Coll: Record EVENT_VERIFICATION_COMPLETED
+            Note over Ctrl: Break Loop
+        end
+    end
+
+    Ctrl->>DB: Save Task Record
+    Ctrl->>Coll: Flush & Save Trace Events
+    Coll->>DB: Batch Insert Events
+    Ctrl-->>User: Return TaskResponse(status, answer, verification, duration)

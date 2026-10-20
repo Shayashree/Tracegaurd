@@ -1,6 +1,7 @@
 """Experiment execution, result retrieval, and export API endpoints for TraceGuard."""
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from backend.api.tasks import get_storage
@@ -349,12 +350,13 @@ def export_experiment(
         )
 
     results = storage.get_experiment_results(experiment_id, limit=5000, offset=0)
+    safe_exp_id = re.sub(r"[^a-zA-Z0-9_\-]", "_", experiment_id)
 
     if format == "jsonl":
         lines = [r.model_dump_json() for r in results]
         content = "\n".join(lines) + ("\n" if lines else "")
         media_type = "application/x-ndjson"
-        filename = f"{experiment_id}_results.jsonl"
+        filename = f"{safe_exp_id}_results.jsonl"
     else:
         metrics = storage.get_experiment_metrics(experiment_id)
         manifest = storage.get_experiment_manifest(experiment_id)
@@ -368,7 +370,7 @@ def export_experiment(
         }
         content = json.dumps(export_data, indent=2)
         media_type = "application/json"
-        filename = f"{experiment_id}_results.json"
+        filename = f"{safe_exp_id}_results.json"
 
     return Response(
         content=content,

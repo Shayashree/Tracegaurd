@@ -1,5 +1,6 @@
 """Execution trace query and export endpoints."""
 import logging
+import re
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from backend.api.tasks import get_storage
@@ -38,7 +39,8 @@ def export_task_traces_jsonl(
         )
 
     jsonl_content = storage.export_jsonl(task_id)
-    filename = f"{task_id}_trace.jsonl"
+    safe_task_id = re.sub(r"[^a-zA-Z0-9_\-]", "_", task_id)
+    filename = f"{safe_task_id}_trace.jsonl"
     return Response(
         content=jsonl_content,
         media_type="application/x-ndjson",

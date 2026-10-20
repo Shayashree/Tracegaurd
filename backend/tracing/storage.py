@@ -22,6 +22,8 @@ class TraceStorage:
         conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=15.0)
         conn.row_factory = sqlite3.Row
         try:
+            conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA busy_timeout = 15000;")
             with conn:
                 yield conn
         finally:
@@ -1094,6 +1096,69 @@ class TraceStorage:
         results = self.get_experiment_results(experiment_id)
         lines = [r.model_dump_json() for r in results]
         return "\n".join(lines) + ("\n" if lines else "")
+
+    # -----------------------------------------------------------------------
+    # Milestone 7: Production Database Operations (Backup, Restore, Health)
+    # -----------------------------------------------------------------------
+    def backup_database(self, destination_path: str) -> str:
+        """
+        Execute an atomic online backup of the SQLite database.
+        Safely copies data without locking concurrent readers.
+        """
+        dest_p = Path(destination_path)
+        dest_p.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock, self._connection() as src_conn:
+            dest_conn = sqlite3.connect(str(dest_p))
+            try:
+                src_conn.backup(dest_conn)
+            finally:
+                dest_conn.close()
+        return str(dest_p.resolve())
+
+    def restore_database(self, source_path: str) -> None:
+        """
+        Restore database atomically from a verified backup SQLite file.
+        """
+        src_p = Path(source_path)
+        if not src_p.exists():
+            raise FileNotFoundError(f"Backup file '{source_path}' does not exist.")
+        with self._lock:
+            src_conn = sqlite3.connect(str(src_p))
+            dest_conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=15.0)
+            try:
+                src_conn.backup(dest_conn)
+                return True
+            finally:
+                src_conn.close()
+                dest_conn.close()
+
+    def check_health(self) -> Dict[str, Any]:
+        """Verify database connectivity, WAL mode, and table accessibility."""
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA journal_mode;")
+            journal_row = cursor.fetchone()
+            journal_mode = journal_row[0] if journal_row else "unknown"
+
+            cursor.execute("SELECT COUNT(*) as c FROM tasks;")
+            tasks_count = cursor.fetchone()["c"]
+
+            cursor.execute("SELECT COUNT(*) as c FROM experiments;")
+            exp_count = cursor.fetchone()["c"]
+
+            cursor.execute("SELECT COUNT(*) as c FROM trace_events;")
+            traces_count = cursor.fetchone()["c"]
+
+            return {
+                "status": "connected",
+                "database_path": str(Path(self.db_path).resolve()),
+                "journal_mode": journal_mode,
+                "counts": {
+                    "tasks": tasks_count,
+                    "experiments": exp_count,
+                    "trace_events": traces_count,
+                }
+            }
 
 
 

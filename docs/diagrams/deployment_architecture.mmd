@@ -1,0 +1,29 @@
+graph TB
+    classDef client fill:#1e293b,stroke:#38bdf8,color:#f8fafc;
+    classDef proxy fill:#0f172a,stroke:#6366f1,color:#f8fafc;
+    classDef srv fill:#064e3b,stroke:#10b981,color:#f8fafc;
+    classDef vol fill:#451a03,stroke:#f59e0b,color:#f8fafc;
+
+    UserBrowser["Client Web Browser"]:::client
+
+    subgraph Host["Container Host / Production VM"]
+        subgraph FrontendContainer["Docker Container: traceguard-frontend (:80)"]
+            Nginx["Nginx Reverse Proxy & Static Web Server"]:::proxy
+            StaticDist["Compiled Vite SPA Bundle (dist/)"]:::proxy
+        end
+
+        subgraph BackendContainer["Docker Container: traceguard-backend (:8000)"]
+            Uvicorn["Uvicorn ASGI Server (FastAPI)"]:::srv
+            AppCode["TraceGuard Engine & Routers"]:::srv
+        end
+
+        subgraph StorageHost["Host Storage"]
+            NamedVol[("Docker Persistent Volume: traceguard_data\n(/app/data/traceguard.db)")]:::vol
+        end
+    end
+
+    UserBrowser -->|HTTP Port 3000| Nginx
+    Nginx -->|Serves Static Files| StaticDist
+    Nginx -->|Reverse Proxies /api, /tasks, /benchmarks, /experiments| Uvicorn
+    Uvicorn --> AppCode
+    AppCode -->|Read/Write WAL Mode| NamedVol

@@ -1,0 +1,33 @@
+flowchart TD
+    classDef startNode fill:#0369a1,stroke:#38bdf8,color:#fff;
+    classDef branch fill:#7c2d12,stroke:#f97316,color:#fff;
+    classDef policy fill:#312e81,stroke:#818cf8,color:#fff;
+    classDef check fill:#1e293b,stroke:#64748b,color:#f8fafc;
+    classDef success fill:#065f46,stroke:#34d399,color:#fff;
+    classDef failure fill:#881337,stroke:#f43f5e,color:#fff;
+
+    DiagIn([Diagnostic Report Received]):::startNode --> BudgetCheck{"Recovery Budget\nRemaining?\n(Attempts < 2, Steps < 5)"}:::branch
+
+    BudgetCheck -- No --> Exhausted([Recovery Terminated: Budget Exhausted]):::failure
+    BudgetCheck -- Yes --> Dispatcher{Select Targeted Policy}:::branch
+
+    Dispatcher -->|Transient Failure| P1["Exponential Backoff Retry Policy"]:::policy
+    Dispatcher -->|Argument Error| P2["Schema Re-prompting & Argument Repair"]:::policy
+    Dispatcher -->|Looping / Repeat| P3["Context Diversification & Anti-Loop Policy"]:::policy
+    Dispatcher -->|Missing Evidence| P4["Evidence Search Prompting Policy"]:::policy
+    Dispatcher -->|Incorrect Output| P5["Reflection & Verification Critique Policy"]:::policy
+
+    P1 --> Exec[Execute Controlled Intervention Step]:::check
+    P2 --> Exec
+    P3 --> Exec
+    P4 --> Exec
+    P5 --> Exec
+
+    Exec --> Deduct[Deduct Step & Tool Budget]:::check
+    Deduct --> Verify{"Independent Verification\nof New Outcome"}:::branch
+
+    Verify -- Verified True --> RecSuccess([Outcome Successfully Recovered]):::success
+    Verify -- Verified False --> StillBudget{"Remaining\nAttempts > 0?"}:::branch
+
+    StillBudget -- Yes --> Dispatcher
+    StillBudget -- No --> RecFail([Recovery Failed: Unverified Outcome]):::failure
