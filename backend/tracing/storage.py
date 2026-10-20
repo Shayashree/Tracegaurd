@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from backend.config import settings
+from backend.config import BASE_DIR, settings
 from backend.models.schemas import TaskResponse, TraceEvent, VerificationResult
 
 from contextlib import contextmanager
@@ -19,12 +19,14 @@ class TraceStorage:
 
     def __init__(self, db_path: Optional[str] = None):
         if (os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")) and not db_path:
-            tmp_dir = Path("/tmp")
+            import tempfile
+            tmp_dir = Path(tempfile.gettempdir())
+            tmp_dir.mkdir(parents=True, exist_ok=True)
             tmp_db = tmp_dir / "traceguard.db"
             if not tmp_db.exists():
                 candidates = [
-                    Path(settings.BASE_DIR) / "data" / "traceguard.db",
-                    Path(settings.BASE_DIR) / "traceguard.db",
+                    Path(BASE_DIR) / "data" / "traceguard.db",
+                    Path(BASE_DIR) / "traceguard.db",
                 ]
                 for cand in candidates:
                     if cand.exists():

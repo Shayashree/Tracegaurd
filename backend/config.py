@@ -16,6 +16,8 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+    BASE_DIR: Path = BASE_DIR
+
     # Environment & Logging
     TRACEGUARD_ENV: str = "development"  # "development", "testing", "production"
     LOG_LEVEL: str = "INFO"

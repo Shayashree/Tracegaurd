@@ -87,22 +87,20 @@ async def correlation_id_and_logging_middleware(request: Request, call_next):
         duration_ms = (time.perf_counter() - t_start) * 1000
         logger.exception(f"[{req_id}] Unhandled error during {request.method} {request.url.path}: {exc}")
 
-        if settings.is_production:
-            return JSONResponse(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content={
-                    "detail": "An internal server error occurred. Please contact the administrator with the request ID.",
-                    "request_id": req_id
-                },
-                headers={"X-Request-ID": req_id}
-            )
-        raise
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "detail": f"Internal server error: {str(exc)}",
+                "request_id": req_id
+            },
+            headers={"X-Request-ID": req_id}
+        )
 
-# Enable CORS (Configurable explicit origins in production, safe wildcard in local dev)
+# Enable CORS for local dev, Docker, and Vercel domains
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if not settings.is_production else settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
