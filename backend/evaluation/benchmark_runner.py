@@ -198,6 +198,29 @@ class BenchmarkRunner:
                 model_tokens = ev.model_tokens
                 break
 
+        # Milestone 3: Run Trajectory Failure Detector on the executed task's trace
+        try:
+            from backend.reliability.failure_detector import TrajectoryFailureDetector
+            detector = TrajectoryFailureDetector()
+            task_ctx = {
+                "task_description": task.task_description,
+                "max_steps": request.max_steps or 8,
+                "allowed_tools": task.allowed_tools,
+                "verification_rule": task.verification_rule.model_dump() if hasattr(task.verification_rule, "model_dump") else task.verification_rule,
+                "verification_status": verif_status,
+                "terminal_status": terminal_status,
+            }
+            diag_report = detector.analyze(
+                events=trace_events,
+                task_id=task.task_id,
+                run_id=task_response.run_id,
+                experiment_id=experiment_id,
+                task_context=task_ctx,
+            )
+            self.storage.save_diagnostic_report(diag_report)
+        except Exception as e:
+            logger.warning(f"Failed to generate diagnostic report for task {task.task_id}: {e}")
+
         return TaskExecutionResult(
             experiment_id=experiment_id,
             task_id=task.task_id,

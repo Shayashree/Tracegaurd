@@ -14,11 +14,11 @@ router = APIRouter(prefix="/tasks", tags=["Tasks"])
 _default_storage = TraceStorage()
 _default_controller = AgentController(storage=_default_storage)
 
-def get_controller() -> AgentController:
-    return _default_controller
-
 def get_storage() -> TraceStorage:
     return _default_storage
+
+def get_controller(storage: TraceStorage = Depends(get_storage)) -> AgentController:
+    return AgentController(storage=storage)
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 def create_task(

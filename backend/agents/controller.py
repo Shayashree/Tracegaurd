@@ -43,11 +43,13 @@ class AgentController:
         tool_registry: Optional[ToolRegistry] = None,
         model_adapter: Optional[BaseModelAdapter] = None,
         storage: Optional[TraceStorage] = None,
+        failure_detector: Optional[Any] = None,
     ):
         self.tool_registry = tool_registry or ToolRegistry()
         self.tool_executor = ToolExecutor(self.tool_registry)
         self.storage = storage or TraceStorage()
         self.model_adapter = model_adapter or self._init_default_adapter()
+        self.failure_detector = failure_detector
 
     def _init_default_adapter(self) -> BaseModelAdapter:
         if settings.MODEL_ADAPTER == "openai" and settings.OPENAI_API_KEY:
@@ -299,6 +301,26 @@ class AgentController:
         # Persist task record and flush traces
         collector.flush()
         self.storage.save_task(response)
+
+        # Passive diagnostic report generation if detector is configured
+        if self.failure_detector:
+            try:
+                events = collector.get_events()
+                task_ctx = {
+                    "task_description": request.task,
+                    "max_steps": max_steps,
+                    "allowed_tools": allowed_tools,
+                    "verification_rule": request.verification_rule.model_dump() if request.verification_rule else None,
+                }
+                diag_report = self.failure_detector.analyze(
+                    events=events,
+                    task_id=task_id,
+                    run_id=run_id,
+                    task_context=task_ctx,
+                )
+                self.storage.save_diagnostic_report(diag_report)
+            except Exception as e:
+                logger.warning(f"Passive diagnostic analysis error for task [{task_id}]: {e}")
 
         logger.info(f"Task completed [{task_id}] with status={task_status} in {total_duration_ms:.1f}ms")
         return response

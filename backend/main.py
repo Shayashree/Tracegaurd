@@ -8,6 +8,11 @@ from backend.api.tasks import router as tasks_router
 from backend.api.traces import router as traces_router
 from backend.api.experiments import router as experiments_router
 from backend.api.benchmarks import router as benchmarks_router
+from backend.api.diagnostics import (
+    router as diagnostics_router,
+    task_diag_router,
+    exp_diag_router,
+)
 from backend.config import settings
 
 # Configure logging
@@ -19,7 +24,7 @@ logger = logging.getLogger("traceguard")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting TraceGuard API (Milestone 2: Benchmark & Evaluation Framework)...")
+    logger.info("Starting TraceGuard API (Milestone 3: Trajectory Failure Detector)...")
     logger.info(f"Model Adapter: {settings.MODEL_ADAPTER}")
     logger.info(f"Default Max Steps: {settings.DEFAULT_MAX_STEPS}")
     yield
@@ -29,9 +34,9 @@ app = FastAPI(
     title="TraceGuard: AI Agent Reliability & Recovery Platform",
     description=(
         "An Evidence-Driven Reliability and Recovery Platform for Tool-Using AI Agents. "
-        "Milestone 2: Benchmark Dataset and Evaluation Framework."
+        "Milestone 3: Trajectory-Based Failure Detection Engine."
     ),
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan
 )
 
@@ -49,6 +54,9 @@ app.include_router(tasks_router)
 app.include_router(traces_router)
 app.include_router(experiments_router)
 app.include_router(benchmarks_router)
+app.include_router(diagnostics_router)
+app.include_router(task_diag_router)
+app.include_router(exp_diag_router)
 
 @app.get("/", include_in_schema=False)
 def root_redirect():

@@ -125,6 +125,49 @@ class TraceStorage:
                     FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id)
                 )
             """)
+            # Milestone 3: Diagnostic Reports table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS diagnostic_reports (
+                    diagnostic_id TEXT PRIMARY KEY,
+                    experiment_id TEXT,
+                    task_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    detector_version TEXT NOT NULL,
+                    diagnostic_status TEXT NOT NULL,
+                    primary_failure_category TEXT,
+                    severity TEXT NOT NULL,
+                    confirmation_status TEXT NOT NULL,
+                    analysis_duration_ms REAL,
+                    report_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_diag_run_id 
+                ON diagnostic_reports(run_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_diag_task_id 
+                ON diagnostic_reports(task_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_diag_experiment_id 
+                ON diagnostic_reports(experiment_id)
+            """)
+            # Milestone 3: Diagnostic Findings table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS diagnostic_findings (
+                    finding_id TEXT PRIMARY KEY,
+                    diagnostic_id TEXT NOT NULL,
+                    rule_id TEXT NOT NULL,
+                    failure_category TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    confirmation_status TEXT NOT NULL,
+                    explanation TEXT,
+                    recommended_next_action TEXT,
+                    FOREIGN KEY(diagnostic_id) REFERENCES diagnostic_reports(diagnostic_id)
+                )
+            """)
             conn.commit()
 
     def save_task(self, task: TaskResponse) -> None:
@@ -446,4 +489,148 @@ class TraceStorage:
                 return None
             data = json.loads(row["metrics_json"])
             return EvaluationMetrics.model_validate(data)
+
+    def get_events_by_run_id(self, run_id: str) -> List[TraceEvent]:
+        """Get ordered execution trace events for a given run_id."""
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT task_id, run_id, step_index, event_type, tool_name, status,
+                       timestamp, duration_ms, input_summary, output_summary,
+                       error_type, model_tokens_json
+                FROM trace_events
+                WHERE run_id = ?
+                ORDER BY id ASC
+            """, (run_id,))
+            rows = cursor.fetchall()
+            events = []
+            for r in rows:
+                tokens = json.loads(r["model_tokens_json"]) if r["model_tokens_json"] else None
+                events.append(TraceEvent(
+                    task_id=r["task_id"],
+                    run_id=r["run_id"],
+                    step_index=r["step_index"],
+                    event_type=r["event_type"],
+                    tool_name=r["tool_name"],
+                    status=r["status"],
+                    timestamp=r["timestamp"],
+                    duration_ms=r["duration_ms"],
+                    input_summary=r["input_summary"],
+                    output_summary=r["output_summary"],
+                    error_type=r["error_type"],
+                    model_tokens=tokens,
+                ))
+            return events
+
+    def save_diagnostic_report(self, report: Any) -> None:
+        """Persist a diagnostic report and its associated findings."""
+        from backend.reliability.diagnostic_report import DiagnosticReport
+        if isinstance(report, dict):
+            report_obj = DiagnosticReport.model_validate(report)
+        else:
+            report_obj = report
+
+        report_json = report_obj.model_dump_json()
+        primary_cat = report_obj.primary_failure_category.value if report_obj.primary_failure_category else None
+
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO diagnostic_reports (
+                    diagnostic_id, experiment_id, task_id, run_id, detector_version,
+                    diagnostic_status, primary_failure_category, severity,
+                    confirmation_status, analysis_duration_ms, report_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(diagnostic_id) DO UPDATE SET
+                    report_json=excluded.report_json,
+                    diagnostic_status=excluded.diagnostic_status,
+                    primary_failure_category=excluded.primary_failure_category,
+                    severity=excluded.severity,
+                    confirmation_status=excluded.confirmation_status
+            """, (
+                report_obj.diagnostic_id,
+                report_obj.experiment_id,
+                report_obj.task_id,
+                report_obj.run_id,
+                report_obj.detector_version,
+                report_obj.diagnostic_status.value if hasattr(report_obj.diagnostic_status, "value") else str(report_obj.diagnostic_status),
+                primary_cat,
+                report_obj.severity.value if hasattr(report_obj.severity, "value") else str(report_obj.severity),
+                report_obj.confirmation_status.value if hasattr(report_obj.confirmation_status, "value") else str(report_obj.confirmation_status),
+                report_obj.analysis_duration_ms,
+                report_json,
+                report_obj.created_at,
+            ))
+
+            for f in report_obj.findings:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO diagnostic_findings (
+                        finding_id, diagnostic_id, rule_id, failure_category,
+                        severity, confirmation_status, explanation, recommended_next_action
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    f.finding_id,
+                    report_obj.diagnostic_id,
+                    f.rule_id,
+                    f.failure_category.value if hasattr(f.failure_category, "value") else str(f.failure_category),
+                    f.severity.value if hasattr(f.severity, "value") else str(f.severity),
+                    f.confirmation_status.value if hasattr(f.confirmation_status, "value") else str(f.confirmation_status),
+                    f.explanation,
+                    f.recommended_next_action,
+                ))
+            conn.commit()
+
+    def get_diagnostic_report(self, diagnostic_id: str) -> Optional[Any]:
+        """Fetch a diagnostic report by diagnostic_id."""
+        from backend.reliability.diagnostic_report import DiagnosticReport
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT report_json FROM diagnostic_reports WHERE diagnostic_id = ?", (diagnostic_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            data = json.loads(row["report_json"])
+            return DiagnosticReport.model_validate(data)
+
+    def get_diagnostics_for_run(self, run_id: str) -> Optional[Any]:
+        """Fetch latest diagnostic report for a specific run_id."""
+        from backend.reliability.diagnostic_report import DiagnosticReport
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT report_json FROM diagnostic_reports
+                WHERE run_id = ?
+                ORDER BY created_at DESC LIMIT 1
+            """, (run_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            data = json.loads(row["report_json"])
+            return DiagnosticReport.model_validate(data)
+
+    def get_diagnostics_for_task(self, task_id: str) -> List[Any]:
+        """Fetch all diagnostic reports for a task_id."""
+        from backend.reliability.diagnostic_report import DiagnosticReport
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT report_json FROM diagnostic_reports
+                WHERE task_id = ?
+                ORDER BY created_at DESC
+            """, (task_id,))
+            rows = cursor.fetchall()
+            return [DiagnosticReport.model_validate(json.loads(r["report_json"])) for r in rows]
+
+    def get_diagnostics_for_experiment(self, experiment_id: str) -> List[Any]:
+        """Fetch all diagnostic reports for an experiment_id."""
+        from backend.reliability.diagnostic_report import DiagnosticReport
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT report_json FROM diagnostic_reports
+                WHERE experiment_id = ?
+                ORDER BY created_at ASC
+            """, (experiment_id,))
+            rows = cursor.fetchall()
+            return [DiagnosticReport.model_validate(json.loads(r["report_json"])) for r in rows]
 

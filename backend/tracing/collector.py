@@ -219,3 +219,7 @@ class TraceCollector:
         """Persist accumulated events to storage."""
         if self.storage and self.events:
             self.storage.save_events(self.events)
+
+    def get_events(self) -> List[TraceEvent]:
+        """Return chronological in-memory list of accumulated events."""
+        return list(self.events)
