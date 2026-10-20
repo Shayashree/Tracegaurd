@@ -231,6 +231,25 @@ class TraceStorage:
                 ON recovery_attempts(recovery_id)
             """)
 
+            # Milestone 5: Experiment Artifacts table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_artifacts (
+                    experiment_id TEXT PRIMARY KEY,
+                    configuration_hash TEXT,
+                    manifest_json TEXT,
+                    report_markdown TEXT,
+                    comparisons_json TEXT,
+                    failure_analysis_json TEXT,
+                    ablation_json TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exp_artifacts_exp_id 
+                ON experiment_artifacts(experiment_id)
+            """)
+
             # Safe migrations for trace_events recovery columns
             for col, col_type in [
                 ("recovery_attempt_id", "TEXT"),
@@ -846,5 +865,165 @@ class TraceStorage:
             """, (experiment_id,))
             rows = cursor.fetchall()
             return [RecoveryReport.model_validate(json.loads(r["report_json"])) for r in rows]
+
+    # -----------------------------------------------------------------------
+    # Milestone 5: Experiment Artifacts Storage & Pagination
+    # -----------------------------------------------------------------------
+    def save_experiment_artifacts(
+        self,
+        experiment_id: str,
+        configuration_hash: str = "",
+        manifest: Optional[Any] = None,
+        report_md: Optional[str] = None,
+        comparisons: Optional[Any] = None,
+        failure_analysis: Optional[Any] = None,
+        ablation: Optional[Any] = None,
+    ) -> None:
+        """Persist structured experiment artifacts (manifest, report, comparisons, ablation)."""
+        from backend.tracing.event_schema import current_utc_timestamp
+        manifest_str = manifest.model_dump_json() if hasattr(manifest, "model_dump_json") else (json.dumps(manifest) if manifest else None)
+        comparisons_str = json.dumps([c.model_dump() if hasattr(c, "model_dump") else c for c in comparisons]) if comparisons else None
+        failure_str = failure_analysis.model_dump_json() if hasattr(failure_analysis, "model_dump_json") else (json.dumps(failure_analysis) if failure_analysis else None)
+        ablation_str = ablation.model_dump_json() if hasattr(ablation, "model_dump_json") else (json.dumps(ablation) if ablation else None)
+
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO experiment_artifacts (
+                    experiment_id, configuration_hash, manifest_json, report_markdown,
+                    comparisons_json, failure_analysis_json, ablation_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(experiment_id) DO UPDATE SET
+                    configuration_hash=excluded.configuration_hash,
+                    manifest_json=excluded.manifest_json,
+                    report_markdown=excluded.report_markdown,
+                    comparisons_json=excluded.comparisons_json,
+                    failure_analysis_json=excluded.failure_analysis_json,
+                    ablation_json=excluded.ablation_json
+            """, (
+                experiment_id,
+                configuration_hash,
+                manifest_str,
+                report_md,
+                comparisons_str,
+                failure_str,
+                ablation_str,
+                current_utc_timestamp(),
+            ))
+            conn.commit()
+
+    def get_experiment_manifest(self, experiment_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch reproducibility manifest dictionary by experiment_id."""
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT manifest_json FROM experiment_artifacts WHERE experiment_id = ?", (experiment_id,))
+            row = cursor.fetchone()
+            if row and row["manifest_json"]:
+                return json.loads(row["manifest_json"])
+            return None
+
+    def get_experiment_report(self, experiment_id: str) -> Optional[str]:
+        """Fetch research report Markdown string by experiment_id."""
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT report_markdown FROM experiment_artifacts WHERE experiment_id = ?", (experiment_id,))
+            row = cursor.fetchone()
+            if row and row["report_markdown"]:
+                return row["report_markdown"]
+            return None
+
+    def get_experiment_comparisons(self, experiment_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Fetch statistical paired comparisons by experiment_id."""
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT comparisons_json FROM experiment_artifacts WHERE experiment_id = ?", (experiment_id,))
+            row = cursor.fetchone()
+            if row and row["comparisons_json"]:
+                return json.loads(row["comparisons_json"])
+            return None
+
+    def get_experiment_failure_analysis(self, experiment_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch failure-specific analysis breakdown by experiment_id."""
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT failure_analysis_json FROM experiment_artifacts WHERE experiment_id = ?", (experiment_id,))
+            row = cursor.fetchone()
+            if row and row["failure_analysis_json"]:
+                return json.loads(row["failure_analysis_json"])
+            return None
+
+    def get_experiment_ablation(self, experiment_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch component ablation results by experiment_id."""
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT ablation_json FROM experiment_artifacts WHERE experiment_id = ?", (experiment_id,))
+            row = cursor.fetchone()
+            if row and row["ablation_json"]:
+                return json.loads(row["ablation_json"])
+            return None
+
+    def get_experiment_results_paginated(
+        self,
+        experiment_id: str,
+        limit: int = 50,
+        offset: int = 0,
+        mode: Optional[str] = None
+    ) -> Tuple[List[Any], int]:
+        """Retrieve paginated task-level results for an experiment."""
+        from backend.evaluation.schemas import TaskExecutionResult
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            count_query = "SELECT COUNT(*) as total FROM experiment_results WHERE experiment_id = ?"
+            params: List[Any] = [experiment_id]
+            if mode:
+                count_query += " AND agent_mode = ?"
+                params.append(mode)
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()["total"]
+
+            data_query = "SELECT * FROM experiment_results WHERE experiment_id = ?"
+            data_params: List[Any] = [experiment_id]
+            if mode:
+                data_query += " AND agent_mode = ?"
+                data_params.append(mode)
+            data_query += " ORDER BY id ASC LIMIT ? OFFSET ?"
+            data_params.extend([limit, offset])
+
+            cursor.execute(data_query, data_params)
+            rows = cursor.fetchall()
+            results = []
+            for r in rows:
+                trace_ref = json.loads(r["trace_reference_json"]) if r["trace_reference_json"] else {}
+                model_toks = json.loads(r["model_tokens_json"]) if r["model_tokens_json"] else None
+                results.append(TaskExecutionResult(
+                    experiment_id=r["experiment_id"],
+                    task_id=r["task_id"],
+                    run_id=r["run_id"],
+                    benchmark_version=r["benchmark_version"],
+                    agent_mode=r["agent_mode"],
+                    terminal_status=r["terminal_status"],
+                    expected_answer=r["expected_answer"],
+                    observed_answer=r["observed_answer"],
+                    verification_status=r["verification_status"],
+                    verification_message=r["verification_message"],
+                    step_count=r["step_count"],
+                    tool_call_count=r["tool_call_count"],
+                    tool_error_count=r["tool_error_count"],
+                    total_duration_ms=r["total_duration_ms"],
+                    model_tokens=model_toks,
+                    estimated_cost=r["estimated_cost"],
+                    trace_reference=trace_ref,
+                    failure_scenario_id=r["failure_scenario_id"],
+                    started_at=r["started_at"],
+                    completed_at=r["completed_at"],
+                ))
+            return results, total
+
+    def export_experiment_jsonl(self, experiment_id: str) -> str:
+        """Export all task execution results for an experiment in JSONL format."""
+        results = self.get_experiment_results(experiment_id)
+        lines = [r.model_dump_json() for r in results]
+        return "\n".join(lines) + ("\n" if lines else "")
+
 
 

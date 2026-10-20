@@ -1,0 +1,51 @@
+{
+  "experiment_id": "exp_ddb479a70dd3",
+  "configuration_hash": "b36fd4bc60708b147a4863ff0562c06aad8f321f69547427cffe5ef1e462c4b8",
+  "experiment_version": "v1.0",
+  "benchmark_version": "v1.0",
+  "dataset_split": "all",
+  "experiment_type": "ablation",
+  "agent_modes": [
+    "baseline",
+    "detection_only",
+    "fixed_retry",
+    "traceguard_recovery"
+  ],
+  "model_configuration": {
+    "model_adapter": "mock",
+    "temperature": 0.0
+  },
+  "tool_configuration": {},
+  "failure_injection_configuration": {},
+  "execution_limits": {
+    "step_limit": 8,
+    "task_timeout_seconds": 30.0,
+    "recovery_budget": {
+      "max_recovery_interventions": 2,
+      "max_retries_per_tool": 2,
+      "max_recovery_steps": 5,
+      "max_recovery_model_calls": 3,
+      "max_recovery_duration_seconds": 30.0
+    }
+  },
+  "random_seed": 42,
+  "environment": {
+    "python_version": "3.14.2",
+    "os_platform": "Windows 11",
+    "processor": "Intel64 Family 6 Model 126 Stepping 5, GenuineIntel",
+    "git_commit": "340437ee4ab4ec581aad0e56c31ac6af5a966922"
+  },
+  "package_versions": {
+    "fastapi": "0.139.0",
+    "pydantic": "2.13.4",
+    "pytest": "9.1.1",
+    "httpx": "0.28.1",
+    "sqlite3": "builtin"
+  },
+  "artifact_references": {
+    "database_path": "data/traceguard.db",
+    "total_tasks_evaluated": "44",
+    "experiment_id": "exp_ddb479a70dd3"
+  },
+  "created_at": "2026-10-20T07:39:00.202+00:00"
+}
