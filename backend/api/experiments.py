@@ -5,6 +5,10 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from backend.api.tasks import get_storage
 from backend.evaluation.benchmark_runner import BenchmarkRunner
+from backend.evaluation.recovery_metrics import (
+    RecoveryMetricsSummary,
+    compute_recovery_metrics,
+)
 from backend.evaluation.schemas import (
     EvaluationMetrics,
     ExperimentRunRequest,
@@ -89,6 +93,25 @@ def get_experiment_metrics(
             detail=f"Metrics for experiment '{experiment_id}' not found."
         )
     return metrics
+
+@router.get("/{experiment_id}/recovery-metrics", response_model=RecoveryMetricsSummary)
+def get_experiment_recovery_metrics(
+    experiment_id: str,
+    storage: TraceStorage = Depends(get_storage)
+) -> RecoveryMetricsSummary:
+    """Returns recovery success rates, attempt rates, and overhead efficiency metrics."""
+    exp = storage.get_experiment(experiment_id)
+    if not exp:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Experiment '{experiment_id}' not found."
+        )
+    recovery_reports = storage.get_recovery_reports_for_experiment(experiment_id)
+    return compute_recovery_metrics(
+        recovery_reports=recovery_reports,
+        agent_mode=exp.agent_mode,
+        total_attempted_override=exp.total_tasks,
+    )
 
 @router.get("/{experiment_id}/export")
 def export_experiment(

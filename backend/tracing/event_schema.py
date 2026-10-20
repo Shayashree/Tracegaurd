@@ -17,6 +17,21 @@ EVENT_TASK_COMPLETED = "task_completed"
 EVENT_TASK_FAILED = "task_failed"
 EVENT_STEP_LIMIT_REACHED = "step_limit_reached"
 
+# Recovery event types per Milestone 4 specification
+EVENT_DIAGNOSTIC_REPORT_CREATED = "diagnostic_report_created"
+EVENT_RECOVERY_POLICY_SELECTED = "recovery_policy_selected"
+EVENT_RECOVERY_POLICY_REJECTED = "recovery_policy_rejected"
+EVENT_RECOVERY_BUDGET_CHECKED = "recovery_budget_checked"
+EVENT_RECOVERY_STARTED = "recovery_started"
+EVENT_RECOVERY_ACTION_STARTED = "recovery_action_started"
+EVENT_RECOVERY_ACTION_COMPLETED = "recovery_action_completed"
+EVENT_RECOVERY_ACTION_FAILED = "recovery_action_failed"
+EVENT_RECOVERY_ATTEMPT_COMPLETED = "recovery_attempt_completed"
+EVENT_RECOVERY_BUDGET_EXHAUSTED = "recovery_budget_exhausted"
+EVENT_RECOVERY_VERIFICATION_COMPLETED = "recovery_verification_completed"
+EVENT_TASK_RECOVERED = "task_recovered"
+EVENT_TASK_UNRESOLVED = "task_unresolved"
+
 VALID_EVENT_TYPES = {
     EVENT_TASK_STARTED,
     EVENT_MODEL_REQUEST,
@@ -29,6 +44,19 @@ VALID_EVENT_TYPES = {
     EVENT_TASK_COMPLETED,
     EVENT_TASK_FAILED,
     EVENT_STEP_LIMIT_REACHED,
+    EVENT_DIAGNOSTIC_REPORT_CREATED,
+    EVENT_RECOVERY_POLICY_SELECTED,
+    EVENT_RECOVERY_POLICY_REJECTED,
+    EVENT_RECOVERY_BUDGET_CHECKED,
+    EVENT_RECOVERY_STARTED,
+    EVENT_RECOVERY_ACTION_STARTED,
+    EVENT_RECOVERY_ACTION_COMPLETED,
+    EVENT_RECOVERY_ACTION_FAILED,
+    EVENT_RECOVERY_ATTEMPT_COMPLETED,
+    EVENT_RECOVERY_BUDGET_EXHAUSTED,
+    EVENT_RECOVERY_VERIFICATION_COMPLETED,
+    EVENT_TASK_RECOVERED,
+    EVENT_TASK_UNRESOLVED,
 }
 
 REDACTION_PATTERNS = [
@@ -63,6 +91,11 @@ class TraceEventModel(BaseModel):
     output_summary: Optional[str] = None
     error_type: Optional[str] = None
     model_tokens: Optional[Dict[str, int]] = None
+    recovery_attempt_id: Optional[str] = None
+    policy_id: Optional[str] = None
+    action_type: Optional[str] = None
+    finding_ids: Optional[List[str]] = None
+    remaining_budget: Optional[Dict[str, Any]] = None
 
     def model_post_init(self, __context: Any) -> None:
         if self.input_summary:

@@ -168,6 +168,82 @@ class TraceStorage:
                     FOREIGN KEY(diagnostic_id) REFERENCES diagnostic_reports(diagnostic_id)
                 )
             """)
+
+            # Milestone 4: Recovery Reports table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS recovery_reports (
+                    recovery_id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    recovery_attempt_id TEXT NOT NULL,
+                    experiment_id TEXT,
+                    policy_id TEXT NOT NULL,
+                    policy_version TEXT NOT NULL,
+                    initial_failure_category TEXT,
+                    terminal_status TEXT NOT NULL,
+                    original_status TEXT NOT NULL,
+                    original_verification_status TEXT,
+                    final_verification_status TEXT,
+                    recovery_attempts_count INTEGER DEFAULT 1,
+                    recovery_duration_ms REAL DEFAULT 0.0,
+                    additional_tool_calls INTEGER DEFAULT 0,
+                    additional_model_calls INTEGER DEFAULT 0,
+                    budget_used_json TEXT,
+                    final_answer TEXT,
+                    report_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(task_id) REFERENCES tasks(task_id)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_recovery_task_id 
+                ON recovery_reports(task_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_recovery_run_id 
+                ON recovery_reports(run_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_recovery_experiment_id 
+                ON recovery_reports(experiment_id)
+            """)
+
+            # Milestone 4: Recovery Attempts table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS recovery_attempts (
+                    attempt_id TEXT PRIMARY KEY,
+                    recovery_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    attempt_index INTEGER NOT NULL,
+                    policy_id TEXT NOT NULL,
+                    action_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    duration_ms REAL DEFAULT 0.0,
+                    error_info TEXT,
+                    attempt_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(recovery_id) REFERENCES recovery_reports(recovery_id)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_attempts_recovery_id 
+                ON recovery_attempts(recovery_id)
+            """)
+
+            # Safe migrations for trace_events recovery columns
+            for col, col_type in [
+                ("recovery_attempt_id", "TEXT"),
+                ("policy_id", "TEXT"),
+                ("action_type", "TEXT"),
+                ("finding_ids_json", "TEXT"),
+                ("remaining_budget_json", "TEXT"),
+            ]:
+                try:
+                    cursor.execute(f"ALTER TABLE trace_events ADD COLUMN {col} {col_type}")
+                except sqlite3.OperationalError:
+                    pass
+
             conn.commit()
 
     def save_task(self, task: TaskResponse) -> None:
@@ -247,6 +323,11 @@ class TraceStorage:
                 e.output_summary,
                 e.error_type,
                 json.dumps(e.model_tokens) if e.model_tokens else None,
+                e.recovery_attempt_id,
+                e.policy_id,
+                e.action_type,
+                json.dumps(e.finding_ids) if e.finding_ids else None,
+                json.dumps(e.remaining_budget) if e.remaining_budget else None,
             )
             for e in events
         ]
@@ -256,8 +337,9 @@ class TraceStorage:
                 INSERT INTO trace_events (
                     task_id, run_id, step_index, event_type, tool_name, status,
                     timestamp, duration_ms, input_summary, output_summary,
-                    error_type, model_tokens_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    error_type, model_tokens_json, recovery_attempt_id, policy_id,
+                    action_type, finding_ids_json, remaining_budget_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, records)
             conn.commit()
 
@@ -268,7 +350,8 @@ class TraceStorage:
             cursor.execute("""
                 SELECT task_id, run_id, step_index, event_type, tool_name, status,
                        timestamp, duration_ms, input_summary, output_summary,
-                       error_type, model_tokens_json
+                       error_type, model_tokens_json, recovery_attempt_id, policy_id,
+                       action_type, finding_ids_json, remaining_budget_json
                 FROM trace_events
                 WHERE task_id = ?
                 ORDER BY id ASC
@@ -277,6 +360,8 @@ class TraceStorage:
             events = []
             for r in rows:
                 tokens = json.loads(r["model_tokens_json"]) if r["model_tokens_json"] else None
+                f_ids = json.loads(r["finding_ids_json"]) if "finding_ids_json" in r.keys() and r["finding_ids_json"] else None
+                rem_b = json.loads(r["remaining_budget_json"]) if "remaining_budget_json" in r.keys() and r["remaining_budget_json"] else None
                 events.append(TraceEvent(
                     task_id=r["task_id"],
                     run_id=r["run_id"],
@@ -290,6 +375,11 @@ class TraceStorage:
                     output_summary=r["output_summary"],
                     error_type=r["error_type"],
                     model_tokens=tokens,
+                    recovery_attempt_id=r["recovery_attempt_id"] if "recovery_attempt_id" in r.keys() else None,
+                    policy_id=r["policy_id"] if "policy_id" in r.keys() else None,
+                    action_type=r["action_type"] if "action_type" in r.keys() else None,
+                    finding_ids=f_ids,
+                    remaining_budget=rem_b,
                 ))
             return events
 
@@ -633,4 +723,128 @@ class TraceStorage:
             """, (experiment_id,))
             rows = cursor.fetchall()
             return [DiagnosticReport.model_validate(json.loads(r["report_json"])) for r in rows]
+
+    # -----------------------------------------------------------------------
+    # Milestone 4: Recovery Storage
+    # -----------------------------------------------------------------------
+    def save_recovery_report(self, report: Any) -> None:
+        """Persist a recovery report and its child attempt records."""
+        from backend.reliability.recovery_report import RecoveryReport
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO recovery_reports (
+                    recovery_id, task_id, run_id, recovery_attempt_id, experiment_id,
+                    policy_id, policy_version, initial_failure_category, terminal_status,
+                    original_status, original_verification_status, final_verification_status,
+                    recovery_attempts_count, recovery_duration_ms, additional_tool_calls,
+                    additional_model_calls, budget_used_json, final_answer, report_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(recovery_id) DO UPDATE SET
+                    terminal_status=excluded.terminal_status,
+                    final_verification_status=excluded.final_verification_status,
+                    final_answer=excluded.final_answer,
+                    recovery_duration_ms=excluded.recovery_duration_ms,
+                    report_json=excluded.report_json
+            """, (
+                report.recovery_id,
+                report.task_id,
+                report.run_id,
+                report.recovery_attempt_id,
+                report.experiment_id,
+                report.policy_id,
+                report.policy_version,
+                report.initial_failure_category,
+                report.terminal_status.value if hasattr(report.terminal_status, "value") else str(report.terminal_status),
+                report.original_status,
+                report.original_verification_status,
+                report.final_verification_status,
+                len(report.attempts) or 1,
+                report.total_recovery_duration_ms,
+                report.additional_tool_calls,
+                report.additional_model_calls,
+                report.budget_usage.model_dump_json() if hasattr(report.budget_usage, "model_dump_json") else None,
+                report.final_answer,
+                report.model_dump_json(),
+                report.created_at,
+            ))
+
+            # Save individual attempts
+            for attempt in report.attempts:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO recovery_attempts (
+                        attempt_id, recovery_id, task_id, run_id, attempt_index,
+                        policy_id, action_type, status, duration_ms, error_info,
+                        attempt_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    attempt.attempt_id,
+                    report.recovery_id,
+                    report.task_id,
+                    report.run_id,
+                    attempt.attempt_index,
+                    attempt.policy_id,
+                    attempt.action_type,
+                    attempt.status,
+                    attempt.duration_ms,
+                    attempt.error_message,
+                    attempt.model_dump_json(),
+                    report.created_at,
+                ))
+            conn.commit()
+
+    def get_recovery_report(self, recovery_id: str) -> Optional[Any]:
+        """Fetch recovery report by recovery_id."""
+        from backend.reliability.recovery_report import RecoveryReport
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT report_json FROM recovery_reports WHERE recovery_id = ?", (recovery_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return RecoveryReport.model_validate(json.loads(row["report_json"]))
+
+    def get_recovery_for_task(self, task_id: str) -> Optional[Any]:
+        """Fetch latest recovery report for a specific task_id."""
+        from backend.reliability.recovery_report import RecoveryReport
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT report_json FROM recovery_reports
+                WHERE task_id = ?
+                ORDER BY created_at DESC LIMIT 1
+            """, (task_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return RecoveryReport.model_validate(json.loads(row["report_json"]))
+
+    def get_recovery_for_run(self, run_id: str) -> Optional[Any]:
+        """Fetch latest recovery report for a specific run_id."""
+        from backend.reliability.recovery_report import RecoveryReport
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT report_json FROM recovery_reports
+                WHERE run_id = ?
+                ORDER BY created_at DESC LIMIT 1
+            """, (run_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return RecoveryReport.model_validate(json.loads(row["report_json"]))
+
+    def get_recovery_reports_for_experiment(self, experiment_id: str) -> List[Any]:
+        """Fetch all recovery reports for an experiment."""
+        from backend.reliability.recovery_report import RecoveryReport
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT report_json FROM recovery_reports
+                WHERE experiment_id = ?
+                ORDER BY created_at ASC
+            """, (experiment_id,))
+            rows = cursor.fetchall()
+            return [RecoveryReport.model_validate(json.loads(r["report_json"])) for r in rows]
+
 

@@ -35,12 +35,12 @@ def test_api_get_benchmark_tasks(client):
 def test_api_reject_unsupported_agent_mode(client):
     payload = {
         "benchmark_version": "v1.0",
-        "agent_mode": "fixed_retry",
+        "agent_mode": "unsupported_mode",
         "task_ids": ["ARITH-001"]
     }
     resp = client.post("/experiments/run", json=payload)
     assert resp.status_code == 422
-    assert "not yet supported in Milestone 2" in resp.text
+    assert "is not supported" in resp.text
 
 def test_api_run_and_query_experiment(client):
     payload = {

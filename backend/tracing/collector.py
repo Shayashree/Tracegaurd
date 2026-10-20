@@ -41,6 +41,11 @@ class TraceCollector:
         output_summary: Optional[str] = None,
         error_type: Optional[str] = None,
         model_tokens: Optional[Dict[str, int]] = None,
+        recovery_attempt_id: Optional[str] = None,
+        policy_id: Optional[str] = None,
+        action_type: Optional[str] = None,
+        finding_ids: Optional[List[str]] = None,
+        remaining_budget: Optional[Dict[str, Any]] = None,
     ) -> TraceEvent:
         """Create, sanitize, and record an event."""
         event = TraceEvent(
@@ -56,10 +61,48 @@ class TraceCollector:
             output_summary=sanitize_text(output_summary),
             error_type=error_type,
             model_tokens=model_tokens,
+            recovery_attempt_id=recovery_attempt_id,
+            policy_id=policy_id,
+            action_type=action_type,
+            finding_ids=finding_ids,
+            remaining_budget=remaining_budget,
         )
         self.events.append(event)
         logger.debug(f"Trace recorded: [{event.step_index}] {event.event_type} - {event.status}")
         return event
+
+    def record_recovery_event(
+        self,
+        step_index: int,
+        event_type: str,
+        status: str,
+        recovery_attempt_id: str,
+        policy_id: Optional[str] = None,
+        action_type: Optional[str] = None,
+        finding_ids: Optional[List[str]] = None,
+        remaining_budget: Optional[Dict[str, Any]] = None,
+        tool_name: Optional[str] = None,
+        duration_ms: Optional[float] = None,
+        input_summary: Optional[str] = None,
+        output_summary: Optional[str] = None,
+        error_type: Optional[str] = None,
+    ) -> TraceEvent:
+        """Record an explicit recovery trace event linked to recovery attempt."""
+        return self.record_event(
+            step_index=step_index,
+            event_type=event_type,
+            status=status,
+            tool_name=tool_name,
+            duration_ms=duration_ms,
+            input_summary=input_summary,
+            output_summary=output_summary,
+            error_type=error_type,
+            recovery_attempt_id=recovery_attempt_id,
+            policy_id=policy_id,
+            action_type=action_type,
+            finding_ids=finding_ids,
+            remaining_budget=remaining_budget,
+        )
 
     def record_task_started(self, task_text: str) -> TraceEvent:
         return self.record_event(

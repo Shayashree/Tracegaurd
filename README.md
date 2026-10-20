@@ -1,18 +1,19 @@
 # TraceGuard: An Evidence-Driven Reliability and Recovery Platform for Tool-Using AI Agents
 
-**Milestone 1, 2 & 3: Baseline Agent, Benchmark Framework & Trajectory-Based Failure Detection Engine**
+**Milestones 1, 2, 3 & 4: Baseline Agent, Benchmark Framework, Trajectory Failure Detector, & Failure-Specific Recovery Engine**
 
 TraceGuard is a research and reliability engineering platform designed for autonomous, tool-using AI agents.
 
 - **Milestone 1** established the modular baseline agent architecture: task planning, deterministic tool execution, observable trace event recording, and deterministic outcome verification.
 - **Milestone 2** introduced a reproducible, versioned benchmark dataset (44 tasks across 5 categories), a failure-injection framework covering 8 controlled failure modes, an experiment execution runner, robust evaluation metrics with Wilson score confidence intervals, and machine-readable experiment export endpoints.
-- **Milestone 3** delivers a modular, trajectory-based failure detection engine (`backend/reliability/`) that extracts deterministic execution features, evaluates explainable detection rules, distinguishes observable failure patterns from unverified completions, supports both offline and live passive observation, and calculates detection precision, recall, and F1 metrics.
+- **Milestone 3** delivered a modular, trajectory-based failure detection engine (`backend/reliability/`) that extracts deterministic execution features, evaluates explainable detection rules (R1–R9), distinguishes observable failure patterns from unverified completions, supports both offline and live passive observation, and calculates detection precision, recall, and F1 metrics.
+- **Milestone 4** implements an intelligent, bounded, failure-specific recovery engine (`backend/reliability/`) that consumes Milestone 3 diagnostic reports, selects and executes targeted recovery policies (Policies A–H), enforces multi-dimensional safety budgets, safely checkpoints state with strict credential redaction, records recovery event trajectories, independently verifies post-recovery outcomes, and evaluates empirical recovery gains against `baseline` and `fixed_retry` comparison modes.
 
 ---
 
 ## 1. System Architecture
 
-TraceGuard is structured into modular, decoupled packages:
+TraceGuard is organized into modular, decoupled packages:
 
 ```
 traceguard/
@@ -21,33 +22,41 @@ traceguard/
 │   │   ├── controller.py        # Baseline Agent execution loop & passive observation hook
 │   │   ├── model_adapter.py     # BaseModelAdapter interface & OpenAI live adapter
 │   │   ├── mock_model.py        # Deterministic mock adapter (zero API credentials required)
-│   │   └── tool_registry.py     # ToolRegistry & ToolExecutor with validation & dispatch
+│   │   └── tool_registry.py     # ToolRegistry & ToolExecutor with validation & schema dispatch
 │   ├── tools/
 │   │   ├── base.py              # BaseTool interface with Pydantic argument validation
 │   │   ├── calculator.py        # Safe arithmetic tool (rejects eval and division by zero)
 │   │   ├── data_lookup.py       # Local product catalog query & exact ID lookup
 │   │   └── document_search.py   # Document library passage & evidence retrieval
 │   ├── tracing/
-│   │   ├── event_schema.py      # Structured event schema & credential redactor
-│   │   ├── collector.py         # Passive observable execution trace recorder
-│   │   └── storage.py           # SQLite database persistence & JSONL export
+│   │   ├── event_schema.py      # Structured event schema (25 events) & credential redactor
+│   │   ├── collector.py         # Observable execution trace recorder & recovery event tracer
+│   │   └── storage.py           # SQLite persistence, migrations, and JSONL export
 │   ├── verification/
 │   │   └── verifier.py          # Deterministic outcome verification framework
-│   ├── reliability/             # [Milestone 3: Trajectory Failure Detector]
+│   ├── reliability/             # [Milestones 3 & 4: Diagnosis & Recovery Engine]
 │   │   ├── detector_config.py   # Configurable thresholds and detector parameters
 │   │   ├── diagnostic_report.py # Structured schemas (DiagnosticReport, DiagnosticFinding, enums)
 │   │   ├── feature_extractor.py # Deterministic feature extraction & stable argument normalizer
 │   │   ├── failure_rules.py     # Explainable rules R1-R9 with evidence references
 │   │   ├── failure_classifier.py# Diagnostic synthesis, severity ranking, and primary category
-│   │   └── failure_detector.py  # TrajectoryFailureDetector (offline analysis & live hook)
+│   │   ├── failure_detector.py  # TrajectoryFailureDetector (offline analysis & live hook)
+│   │   ├── recovery_report.py   # Recovery enums, attempt records, and structured report schemas
+│   │   ├── recovery_budget.py   # Centralized multi-dimensional recovery budget tracker
+│   │   ├── recovery_state.py    # RecoveryStateManager & recursive credential-sanitizing checkpointing
+│   │   ├── recovery_policy.py   # Explainable rule-based PolicySelector (Policies A-H)
+│   │   ├── recovery_actions.py  # Safe, bounded recovery action implementations
+│   │   ├── recovery_verifier.py # Independent post-recovery outcome verifier & terminal status mapper
+│   │   └── recovery_engine.py   # RecoveryEngine (diagnosis-driven) & FixedRetryEngine (baseline)
 │   ├── evaluation/
-│   │   ├── schemas.py           # Pydantic schemas for benchmark tasks, experiments, & metrics
+│   │   ├── schemas.py           # Schemas for benchmark tasks, experiments, and comparative metrics
 │   │   ├── dataset.py           # BenchmarkDatasetLoader (JSONL loader, train/val/test splits)
 │   │   ├── failure_injection.py # InjectedToolExecutor & InjectedModelAdapter (8 failure modes)
 │   │   ├── statistics.py        # Wilson score confidence intervals & percentile distributions
-│   │   ├── metrics.py           # Agent evaluation metrics engine (success, accuracy, efficiency)
+│   │   ├── metrics.py           # Baseline agent evaluation metrics (success, accuracy, efficiency)
 │   │   ├── detector_metrics.py  # Detector evaluation metrics (precision, recall, F1, confusion)
-│   │   └── benchmark_runner.py  # BenchmarkRunner orchestrator (execution, metrics, detector)
+│   │   ├── recovery_metrics.py  # Comprehensive recovery metrics & comparative delta statistics
+│   │   └── benchmark_runner.py  # BenchmarkRunner orchestrating baseline, fixed_retry, & traceguard
 │   ├── models/
 │   │   └── schemas.py           # Pydantic models for tasks, tools, traces, and API requests
 │   ├── api/
@@ -55,7 +64,8 @@ traceguard/
 │   │   ├── traces.py            # REST endpoints: GET traces and JSONL export
 │   │   ├── benchmarks.py        # REST endpoints: GET /benchmarks, GET /benchmarks/{v}/tasks
 │   │   ├── experiments.py       # REST endpoints: POST /experiments/run, GET /experiments/{id}/*
-│   │   └── diagnostics.py       # REST endpoints: POST /diagnostics/run, GET diagnostics & metrics
+│   │   ├── diagnostics.py       # REST endpoints: POST /diagnostics/run, GET diagnostics & metrics
+│   │   └── recovery.py          # REST endpoints: POST /tasks/{id}/recover, GET recovery reports & metrics
 │   ├── config.py                # Environment configuration using pydantic-settings
 │   └── main.py                  # FastAPI application entrypoint with health & CORS
 ├── data/
@@ -77,9 +87,13 @@ traceguard/
 │   ├── test_feature_extractor.py# Deterministic feature extraction and canonical argument normalizer
 │   ├── test_failure_detector.py # All failure categories, rules R1-R9, persistence, passive hook
 │   ├── test_detector_metrics.py # Precision, recall, F1, confusion matrices, dataset splits
-│   └── test_api_diagnostics.py  # Diagnostics REST API endpoints integration tests
+│   ├── test_api_diagnostics.py  # Diagnostics REST API endpoints integration tests
+│   ├── test_recovery_policies.py# Failure-specific recovery policies A-H & safety constraints
+│   ├── test_recovery_engine.py  # RecoveryEngine workflow, FixedRetryEngine, checkpoints, & persistence
+│   ├── test_recovery_metrics.py # Recovery formulas, denominators, comparative deltas, & zero safety
+│   └── test_api_recovery.py     # Recovery REST API endpoints integration tests
 ├── demo.py                      # Interactive CLI task demonstration runner
-├── demo_benchmark.py            # Benchmark execution and trajectory failure diagnostics runner
+├── demo_benchmark.py            # Comparative evaluation & trajectory recovery demo runner
 ├── verify_api.py                # Live HTTP server verification test script
 ├── requirements.txt             # Project dependencies
 └── README.md                    # Project documentation
@@ -108,199 +122,264 @@ The failure detector observes **trajectory evidence** (tool argument validity, e
 
 ---
 
-## 3. Trajectory Feature Extractor & Canonical Argument Normalizer
+## 3. Failure-Specific Recovery Engine Architecture (Milestone 4)
 
-Located in `backend/reliability/feature_extractor.py`:
+TraceGuard Milestone 4 extends the diagnostic findings of Milestone 3 into an intelligent, bounded recovery subsystem (`backend/reliability/`).
 
-- **Deterministic Argument Normalization (`normalize_tool_arguments`)**:
-  - Recursively sorts dictionary keys.
-  - Standardizes numerical representations (e.g., `20.0` $\rightarrow$ `20`).
-  - Strips whitespace and normalizes text casing.
-  - Canonical JSON serialization enables exact equality and repetition detection.
-- **Extracted Feature Vector (`TrajectoryFeatures`)**:
-  - `total_steps`, `total_tool_calls`, `unique_tools_used`
-  - `tool_call_repetition_ratio` ($1.0 - \text{unique\_signatures} / \text{total\_calls}$)
-  - `distinct_argument_patterns`, `max_consecutive_identical_tool_calls`
-  - `tool_execution_failures`, `persistent_tool_failures`, `validation_failures`
-  - `empty_tool_results`, `successful_tool_results`, `final_answer_attempts`
-  - `step_limit_reached`, `final_answer_produced`, `terminal_status`, `verification_status`
-  - `evidence_retrieval_occurred`, `evidence_policy_satisfied`
-  - `mean_step_duration_ms`, `total_duration_ms`, `observable_progress_stalled`
-
----
-
-## 4. Diagnostic Report Schema
-
-Located in `backend/reliability/diagnostic_report.py`:
-
-Every diagnostic evaluation returns a machine-readable `DiagnosticReport`:
-- `diagnostic_id`: Unique diagnostic identifier (e.g. `diag_a1b2c3d4e5f6`).
-- `experiment_id`, `task_id`, `run_id`: Trace correlation keys.
-- `detector_version`: Active detector version (e.g. `v1.0.0`).
-- `diagnostic_status`: Overall outcome (`healthy`, `warning`, `failure_detected`, `insufficient_data`).
-- `primary_failure_category`: Dominant failure taxonomy category (highest severity finding).
-- `severity`: Overall severity level (`info`, `low`, `medium`, `high`, `critical`).
-- `confirmation_status`: `confirmed`, `suspected`, or `unverified`.
-- `findings`: Collection of all triggered rule findings:
-  - `finding_id`: Unique finding ID.
-  - `rule_id`: Identifier of triggered rule (e.g. `R1_REPEATED_ACTION`, `R3_INVALID_TOOL_CALL`).
-  - `failure_category`: Taxonomy category.
-  - `severity`: Finding severity.
-  - `confirmation_status`: Level of empirical certainty.
-  - `evidence_event_ids`: Specific execution step references supporting the finding.
-  - `explanation`: Detailed, human-readable diagnostic explanation.
-  - `recommended_next_action`: Advisory remediation guideline (informational only; not executed in Milestone 3).
-- `features`: Full extracted `TrajectoryFeatures` vector.
-- `analysis_duration_ms`: Computation latency (typically $< 0.5$ ms).
-
----
-
-## 5. Execution Modes & Integration
-
-TraceGuard supports two non-invasive detection modes:
-
-1. **Offline Mode (Primary Evaluation Mode)**:
-   Analyzes completed trace event histories persisted in SQLite. Used for reproducible benchmarking and post-run auditing.
-2. **Observation Mode (Passive Runtime Hook)**:
-   The `AgentController` invokes `failure_detector.on_event(...)` during live execution.
-   - **Zero Interference**: Does not alter tool selection, insert retries, abort tasks early, or modify model prompts.
-   - **Exception Isolation**: Detection exceptions are caught and logged without disrupting agent task execution.
-
----
-
-## 6. Dataset Splits & Data Leakage Prevention
-
-The 44-task benchmark is split into disjoint partitions to prevent data leakage:
-
-- **Train / Development (50% — 24 tasks)**: `ARITH-001..005`, `DATA-001..005`, `DOC-001..005`, `MULTI-001..005`, `FAIL-001..004`. Used for rule authoring and symptom discovery.
-- **Validation (25% — 10 tasks)**: `ARITH-006..007`, `DATA-006..007`, `DOC-006..007`, `MULTI-006..007`, `FAIL-005..006`. Used for threshold selection (`repeated_call_threshold`, `persistent_tool_failure_threshold`).
-- **Held-Out Test (25% — 10 tasks)**: `ARITH-008..009`, `DATA-008..009`, `DOC-008..009`, `MULTI-008..009`, `FAIL-007..008`. Reserved exclusively for unbiased evaluation.
-
-The detector never accesses benchmark ground truth labels during inference.
-
----
-
-## 7. REST API Endpoints
-
-### Diagnostic Execution & Querying
-
-#### `POST /diagnostics/run`
-Run diagnostic analysis on an existing execution run:
-```json
-{
-  "run_id": "run_a1b2c3d4e5f6",
-  "task_id": "task_1234567890ab"
-}
-```
-**Response (200 OK):**
-```json
-{
-  "diagnostic_id": "diag_8f3d0a1b2c4e",
-  "task_id": "FAIL-003",
-  "run_id": "run_a1b2c3d4e5f6",
-  "detector_version": "v1.0.0",
-  "diagnostic_status": "failure_detected",
-  "primary_failure_category": "repeated_tool_calls",
-  "severity": "high",
-  "confirmation_status": "confirmed",
-  "findings": [
-    {
-      "finding_id": "fnd_7a8b9c0d",
-      "rule_id": "R1_REPEATED_ACTION",
-      "failure_category": "repeated_tool_calls",
-      "severity": "high",
-      "confirmation_status": "confirmed",
-      "confidence": 1.0,
-      "evidence_event_ids": ["step_0", "step_1", "step_2"],
-      "explanation": "Detected 3 consecutive identical tool calls to 'data_lookup' without observable task progress.",
-      "recommended_next_action": "Examine repetitive tool call loops, inject repetition constraints, or prompt agent to revise strategy."
-    }
-  ],
-  "analysis_duration_ms": 0.312
-}
+```mermaid
+flowchart TD
+    Task([Incoming Task]) --> BaseAgent[Baseline Agent Execution]
+    BaseAgent --> TraceCollector[Observable Trace Collector]
+    TraceCollector --> Detector[Milestone 3 Trajectory Failure Detector]
+    Detector --> DiagReport[Diagnostic Report]
+    
+    DiagReport --> Selector{Explainable Policy Selector}
+    
+    Selector -->|Policy A: Transient Failure| ActA[Bounded Tool Retry with Backoff]
+    Selector -->|Policy B: Invalid Arguments| ActB[Schema Error Feedback & Mandatory Revalidation]
+    Selector -->|Policy C: Repeated Actions| ActC[Loop Break & Structured Replanning]
+    Selector -->|Policy D: Missing Evidence| ActD[Alternative Query or Abstention]
+    Selector -->|Policy E: Incorrect Answer| ActE[Outcome Feedback - Ground Truth Isolated]
+    Selector -->|Policy F: Step Exhaustion| ActF[Bounded Single Replanning Continuation]
+    Selector -->|Policy G: Unverified Completion| ActG[Supplemental Verification / Abstain]
+    Selector -->|Policy H: Malformed Output| ActH[Schema Guided Output Re-prompting]
+    Selector -->|No Supported Policy / Healthy| NoAct[Preserve Original Status]
+    
+    ActA & ActB & ActC & ActD & ActE & ActF & ActG & ActH --> BudgetCheck{Recovery Budget Check}
+    BudgetCheck -->|Budget Available| ExecuteAction[Execute Bounded Recovery Action]
+    BudgetCheck -->|Budget Exhausted| TermExhaust[Terminal: budget_exhausted]
+    
+    ExecuteAction --> Verifier[Independent Outcome Verifier]
+    Verifier --> OutcomeDecision{Verified?}
+    OutcomeDecision -->|Passed| RecSuccess[Terminal: recovered_successfully]
+    OutcomeDecision -->|Failed / Inconclusive| RecFail[Terminal: failed_after_recovery / unverified]
+    
+    RecSuccess & RecFail & TermExhaust & NoAct --> Storage[(SQLite Database & Linked JSONL)]
 ```
 
-#### `GET /diagnostics/{diagnostic_id}`
-Retrieve a stored diagnostic report by ID.
+### 3.1 Failure-Specific Recovery Policies (Policies A–H)
 
-#### `GET /tasks/{task_id}/diagnostics`
-List diagnostic reports associated with a specific task ID.
+| Policy ID | Target Failure Category | Trigger Condition | Bounded Recovery Action | Hard Safety Constraints |
+|---|---|---|---|---|
+| **Policy A** (`policy_a_transient_tool_failure`) | Tool Execution Failure / Timeout | Transient tool error or controlled timeout scenario | Retry operation with backoff; revalidate arguments prior to execution | Never retry deterministic schema errors; strictly enforce max retries |
+| **Policy B** (`policy_b_invalid_tool_arguments`) | Invalid Tool Arguments | Pydantic schema validation rejection on tool call | Return validation error to agent; request schema-compliant correction | Mandatory schema revalidation before re-execution; never execute invalid calls |
+| **Policy C** (`policy_c_repeated_tool_calls`) | Repeated Tool Calls / Lack of Progress | $\ge 3$ repeated equivalent calls without new evidence | Enforce loop break; provide concise attempt summary; allow 1 bounded replan | Must differ meaningfully from loop; limit to 1 replanning step |
+| **Policy D** (`policy_d_missing_evidence`) | Missing Evidence | Required document evidence unsatisfied | Execute alternative search queries; inspect returned passages | Never hallucinate citations; produce explicit abstention if evidence absent |
+| **Policy E** (`policy_e_incorrect_final_answer`) | Incorrect Final Answer | Mismatch against expected verification rule | Provide verification failure error message for bounded re-evaluation | **Ground truth strictly isolated**: expected value is NEVER shown to model |
+| **Policy F** (`policy_f_step_limit_continuation`) | Step-Limit Exhaustion | Step ceiling reached before completion | Permit 1 bounded continuation attempt if budget permits | Stricter recovery budget ceiling; never repeat trajectory from step 0 |
+| **Policy G** (`policy_g_unverified_completion`) | Unverified Completion | Agent returned answer with no verification rule | Execute supplemental verification check if rule exists, else retain unverified | Never misrepresent unverified answer as verified success |
+| **Policy H** (`policy_h_malformed_model_output`) | Malformed Output | Model response neither tool call nor answer | Request bounded schema-guided output re-prompting | Validate response structure again; strictly bounded attempts |
 
-#### `GET /runs/{run_id}/diagnostics`
-Retrieve the latest diagnostic report for a specific run ID.
+### 3.2 Explainable Policy Selection Logic
+The `PolicySelector` evaluates diagnostic reports deterministically without using an unrestricted black-box LLM:
+1. **Confirmed Findings First**: Prioritizes confirmed findings over suspected indicators.
+2. **Deterministic Priority Ranking**: Evaluates critical/high issues first (`TOOL_EXECUTION_FAILURE` $\to$ `INVALID_TOOL_ARGUMENTS` $\to$ `REPEATED_TOOL_CALLS` $\to$ `MISSING_EVIDENCE` $\to$ `INCORRECT_FINAL_ANSWER` $\to$ `STEP_LIMIT_EXHAUSTION` $\to$ `MALFORMED_OUTPUT`).
+3. **Evidence Alignment**: Requires actionable finding IDs and tool permissions before selection.
+4. **Preconditions & Explanation**: Every policy selection generates an explicit reason, verified preconditions, expected outcome, and required budget.
 
-#### `GET /diagnostics/config`
-Retrieve active detector version and thresholds (`repeated_call_threshold`, `persistent_tool_failure_threshold`, etc.).
+### 3.3 Recovery Budget & Multi-Dimensional Safety Controls
+The centralized `RecoveryBudgetTracker` prevents infinite loops, recursive runaway execution, and uncontrolled costs:
+- **Maximum Recovery Attempts**: Defaults to `2` interventions per task.
+- **Maximum Tool Retries**: Defaults to `2` retries per specific tool.
+- **Maximum Recovery Steps**: Defaults to `5` additional steps total.
+- **Maximum Model Calls**: Defaults to `3` model calls during recovery.
+- **Maximum Recovery Duration**: Defaults to `30.0` seconds wall-clock time.
+- **Strict Budget Exhaustion**: When any limit is exceeded, execution terminates immediately with status `budget_exhausted` and all traces are preserved.
 
-#### `POST /experiments/{experiment_id}/diagnostics`
-Batch-run the failure detector across all task traces in an experiment.
+### 3.4 Safe State & Checkpoint Handling
+The `RecoveryStateManager` manages state checkpoints with automatic security sanitization:
+- **Zero Secret Leakage**: Recursively walks all checkpoint objects and strips sensitive fields (`api_key`, `token`, `secret`, `authorization`, `password`, `Bearer`).
+- **Private Reasoning Isolation**: Checkpoints contain only observable task inputs and completed tool outputs; internal chain-of-thought or raw system prompts are never persisted.
+- **Idempotency Safeguard**: For non-idempotent or non-resumable tools, a fresh bounded attempt is executed rather than assuming the action was reversible.
 
-#### `GET /experiments/{experiment_id}/detector-metrics`
-Calculate and return detector performance metrics (Precision, Recall, F1, Latency, Confusion counts) against benchmark ground-truth labels.
+### 3.5 Trace Schema Extensions (13 Recovery Event Types)
+Milestone 4 introduces 13 new strongly typed trace event types into `backend/tracing/event_schema.py`:
+- `diagnostic_report_created`
+- `recovery_policy_selected`
+- `recovery_policy_rejected`
+- `recovery_budget_checked`
+- `recovery_started`
+- `recovery_action_started`
+- `recovery_action_completed`
+- `recovery_action_failed`
+- `recovery_attempt_completed`
+- `recovery_budget_exhausted`
+- `recovery_verification_completed`
+- `task_recovered`
+- `task_unresolved`
+
+Every recovery trace event records the `task_id`, `run_id`, `recovery_attempt_id`, `policy_id`, `action_type`, `step_index`, and `remaining_budget`. Original attempt traces and recovery attempt traces are linked via identifiers while remaining distinguishable.
+
+### 3.6 Independent Post-Recovery Outcome Verification
+Every recovered result is independently evaluated by the `RecoveryOutcomeVerifier` using the original verification rule. The final status maps to one of 8 discrete terminal states:
+- `success_without_recovery`: Initial execution succeeded and was verified without intervention.
+- `recovered_successfully`: Initial execution failed or was unverified, but recovery produced a verified outcome.
+- `failed_after_recovery`: Recovery was attempted, but the final outcome failed independent verification.
+- `unresolved`: Recovery failed to produce an answer or remaining actions were non-viable.
+- `abstained`: The agent properly withheld an answer due to insufficient or missing evidence.
+- `unverified`: The recovery produced an answer, but no ground-truth rule exists to verify correctness.
+- `timeout`: Recovery execution exceeded allowed time limits.
+- `budget_exhausted`: Recovery stopped because a step, attempt, or call budget limit was reached.
 
 ---
 
-## 8. How to Run Diagnostics & Automated Tests
+## 4. Experimental Framework: 3 Execution Modes Compared
 
-### 1. Run Complete Automated Test Suite (105 tests)
+TraceGuard supports three distinct agent execution modes for controlled benchmarking:
+
+1. **`baseline`**: Standard agent execution without failure diagnosis or recovery interventions.
+2. **`fixed_retry`**: Standard blind retry strategy that retries transient tool errors up to a fixed limit (2 retries) without trajectory diagnosis, argument correction, or adaptive replanning.
+3. **`traceguard_recovery`**: Full diagnostic-driven recovery engine utilizing Milestone 3 trajectory diagnosis and Policies A–H.
+
+### Comprehensive Recovery Evaluation Metrics
+Calculated in `backend/evaluation/recovery_metrics.py`:
+- **End-to-End Task Success Rate**: Percentage of attempted tasks that achieved verified success.
+- **Recovery Success Rate (Eligible)**: $\frac{\text{Initially failed tasks that became verified successes}}{\text{Tasks eligible for recovery}} \times 100$.
+- **Recovery Success Rate (All Unsuccessful)**: $\frac{\text{Initially failed tasks that became verified successes}}{\text{All initially unsuccessful tasks}} \times 100$.
+- **Recovery Attempt Rate**: Percentage of attempted tasks triggering at least one recovery intervention.
+- **Unnecessary Intervention Rate**: Percentage of interventions applied to healthy tasks.
+- **Failure Recurrence Rate**: Percentage of tasks where the original failure category recurred after intervention.
+- **Efficiency Metrics**: Mean and median total latency, recovery overhead latency, tool call overhead, model call overhead, and cost per task.
+- **Comparative Deltas**: Absolute percentage-point gains ($\Delta \text{pp}$) and relative improvement percentages compared to `baseline` and `fixed_retry`.
+
+---
+
+## 5. REST API Reference
+
+TraceGuard provides a comprehensive FastAPI REST API:
+
+### Core Task & Trace Endpoints
+- `POST /tasks`: Submit a new task for agent execution.
+- `GET /tasks/{task_id}`: Retrieve task status, result, and step count.
+- `GET /tasks/{task_id}/traces`: Retrieve complete observable trace event stream.
+- `GET /tasks/{task_id}/traces/export`: Export trace events as JSON Lines (JSONL).
+
+### Diagnostics Endpoints (Milestone 3)
+- `POST /diagnostics/run`: Run trajectory failure detector on a task or trace.
+- `GET /diagnostics/{diagnostic_id}`: Retrieve a stored diagnostic report.
+- `GET /tasks/{task_id}/diagnostics`: Retrieve diagnostic reports for a task.
+- `GET /runs/{run_id}/diagnostics`: Retrieve diagnostic report for a run.
+- `GET /diagnostics/config`: View active detector thresholds.
+- `POST /experiments/{experiment_id}/diagnostics`: Batch analyze an experiment.
+- `GET /experiments/{experiment_id}/detector-metrics`: Retrieve detector precision, recall, and F1.
+
+### Recovery Endpoints (Milestone 4)
+- **`POST /tasks/{task_id}/recover`**: Initiates a bounded recovery attempt for an eligible failed or unresolved task using its diagnostic report.
+- **`GET /tasks/{task_id}/recovery`**: Returns recovery history and final terminal status for a task.
+- **`GET /runs/{run_id}/recovery`**: Returns recovery attempts linked to a specific run.
+- **`GET /recovery/{recovery_id}`**: Retrieves a full structured recovery report including attempt logs, policy applied, budget usage, and verification result.
+- **`POST /experiments/run`**: Executes a benchmark experiment across tasks, accepting validated `agent_mode`: `"baseline"`, `"fixed_retry"`, or `"traceguard_recovery"`.
+- **`GET /experiments/{experiment_id}/recovery-metrics`**: Returns recovery success rate, attempt rate, efficiency overheads, and comparative deltas.
+
+---
+
+## 6. How to Run, Test, & Reproduce
+
+### 1. Run Complete Automated Test Suite (123 tests)
+All 123 unit and integration tests across Milestones 1–4 run fully offline without external API keys:
 ```bash
 python -m pytest -v
 ```
-Covers:
-- `tests/test_feature_extractor.py`: Argument normalization, deterministic feature extraction.
-- `tests/test_failure_detector.py`: Rules R1–R9, healthy trajectories, persistence, passive hook.
-- `tests/test_detector_metrics.py`: Precision, recall, F1, zero-denominator safety, dataset splits.
-- `tests/test_api_diagnostics.py`: All diagnostic REST API endpoints.
-- Milestones 1 & 2 regression test suites.
+Test suite coverage:
+- `tests/test_recovery_policies.py`: Unit tests for Policies A–H and safety constraints.
+- `tests/test_recovery_engine.py`: Integration tests for RecoveryEngine, FixedRetryEngine, and checkpoints.
+- `tests/test_recovery_metrics.py`: Formula tests for recovery rates, denominators, and zero-safety.
+- `tests/test_api_recovery.py`: REST API endpoint tests for recovery operations.
+- `tests/test_failure_detector.py`: Rules R1–R9 and diagnostic classification.
+- `tests/test_detector_metrics.py`: Detection precision, recall, and F1 evaluation.
+- `tests/test_tools.py`, `tests/test_tracing.py`, `tests/test_verifier.py`, `tests/test_agent_controller.py`: Core baseline test suite.
 
-### 2. Run CLI Benchmark & Trajectory Diagnostics Demo
+### 2. Run Comparative Evaluation CLI Demo
+Execute all three modes (`baseline`, `fixed_retry`, `traceguard_recovery`) on failure scenario tasks:
 ```bash
-# Run diagnostics across failure scenarios (8 tasks)
 python demo_benchmark.py
-
-# Run diagnostics across entire 44-task benchmark
+```
+Execute comparative evaluation across the entire 44-task benchmark:
+```bash
 python demo_benchmark.py --all
 ```
 
 ---
 
-## 9. Actual Benchmark Detector Metrics (Real Data)
+## 7. Actual Benchmark Evaluation Results (Real Data)
 
-Generated from a primary evaluation across the entire 44-task benchmark (`exp_44e588347f3f`):
+The following metrics were measured on a local run of the benchmark suite across all 44 tasks (`data/benchmarks/benchmark_v1.jsonl`):
+
+### 7.1 Comparative Reliability & Efficiency Summary (All 44 Benchmark Tasks)
+
+| Metric | Baseline Mode | Fixed-Retry Mode | TraceGuard Recovery Mode |
+|---|:---:|:---:|:---:|
+| **Verified Task Success Rate** | **84.1%** (37/44) | **84.1%** (37/44) | **84.1%** (37/44) |
+| **Wilson 95% Confidence Interval** | [70.6%, 92.1%] | [70.6%, 92.1%] | [70.6%, 92.1%] |
+| **Recovery Interventions Initiated** | 0 | 4 | 7 |
+| **Recovery Success Rate (Eligible)** | N/A | 0.0% | 0.0% |
+| **Mean Total Latency** | 2.0 ms | 1.8 ms | 3.7 ms |
+| **Mean Additional Recovery Latency** | 0.0 ms | 0.0 ms | +1.7 ms |
+| **Mean Additional Tool Calls** | 0.0 | +0.09 | +0.25 |
+
+### 7.2 Comparative Reliability & Efficiency Summary (Failure Scenarios Category, 8 Injected Failure Tasks)
+
+| Metric | Baseline Mode | Fixed-Retry Mode | TraceGuard Recovery Mode |
+|---|:---:|:---:|:---:|
+| **Verified Task Success Rate** | **25.0%** (2/8) | **25.0%** (2/8) | **25.0%** (2/8) |
+| **Wilson 95% Confidence Interval** | [7.2%, 59.1%] | [7.2%, 59.1%] | [7.2%, 59.1%] |
+| **Recovery Interventions Initiated** | 0 | 3 | 6 |
+| **Mean Total Latency** | 2.1 ms | 1.9 ms | 8.5 ms |
+| **Mean Additional Recovery Latency** | 0.0 ms | 0.0 ms | +6.4 ms |
+
+### 7.3 Reproducible Sample Recovery Trajectory Walkthrough
+
+Below is an actual recovery execution record generated from an injected transient tool failure task (`task_c90092cb0d2a`):
 
 ```json
 {
-  "detector_version": "v1.0.0",
-  "total_runs_evaluated": 44,
-  "total_failures_ground_truth": 9,
-  "total_healthy_ground_truth": 35,
-  "detected_failures_count": 7,
-  "false_alarm_count": 0,
-  "detection_coverage": 77.8,
-  "micro_precision": 0.3846,
-  "micro_recall": 0.8333,
-  "micro_f1": 0.5263,
-  "mean_detection_latency_ms": 0.194,
-  "median_detection_latency_ms": 0.182,
-  "p95_detection_latency_ms": 0.315,
-  "held_out_detection_rate": 80.0
+  "task_id": "task_c90092cb0d2a",
+  "original_run_id": "run_04c55353d9e0",
+  "recovery_id": "rec_0c25b3996763",
+  "recovery_attempt_id": "attempt_c750e633d3bb",
+  "initial_failure_category": "tool_execution_failure",
+  "diagnostic_report_id": "diag_task_c90092cb0d2a",
+  "selected_policy": "policy_a_transient_tool_failure",
+  "selection_reason": "Confirmed tool execution failure detected on 'calculator'. Applying bounded retry with backoff.",
+  "original_status": "completed",
+  "original_verification_status": "not_applicable",
+  "terminal_status": "unverified",
+  "final_verification_status": "not_applicable",
+  "final_answer": "The calculated result is 100.",
+  "recovery_overhead": {
+    "duration_ms": 22.4,
+    "additional_tool_calls": 1,
+    "additional_model_calls": 0,
+    "additional_steps": 1
+  },
+  "observable_recovery_trace_events": [
+    "diagnostic_report_created",
+    "recovery_policy_selected",
+    "recovery_budget_checked",
+    "recovery_started",
+    "recovery_action_started",
+    "recovery_action_completed",
+    "recovery_verification_completed",
+    "task_unresolved"
+  ]
 }
 ```
 
-*Highlights:*
-- **Zero False Alarms**: 0 false alarms across all healthy, verified tasks.
-- **High Recall**: 83.3% detection recall across ground-truth failure scenarios.
-- **Sub-Millisecond Overhead**: Mean analysis latency of **0.194 ms**.
+*Key Empirical Takeaways:*
+1. **Measured Safety**: Zero false interventions on healthy trajectories. When no actionable diagnosis is found, `policy_none` preserves the completed status without unnecessary overhead.
+2. **Deterministic Budget Ceiling**: The multi-dimensional budget strictly capped all interventions, preventing infinite loops or runaway step accumulation.
+3. **No Unwarranted Factual Claims**: When ground-truth verification rules were not present, the terminal status remained explicitly `unverified` rather than claiming verified success.
 
 ---
 
-## 10. Known Limitations & Next Milestone
+## 8. Known Limitations & Roadmap
 
-### Current Limitations (Milestone 3)
-1. **Passive Observation Only**: The detector reports diagnostic findings and advisory actions but does not perform autonomous recovery, state rollback, or tool retries.
-2. **Deterministic Rules**: Uses interpretable deterministic rules rather than black-box ML classifiers to ensure explainability and zero API dependency.
-3. **External Model Ground Truth**: In external live-model mode, ground truth verification requires defined deterministic rules; answers without explicit verification rules are flagged as `UNVERIFIED_COMPLETION`.
+### Current Limitations (Milestone 4)
+1. **Mock Model Replanning**: Deterministic offline mock fixtures test bounded replanning structurally. When external LLMs are connected, prompt-based replanning varies based on model reasoning capabilities.
+2. **Stateless Tool Environments**: Local synthetic tools are stateless; state rollback in external stateful environments (e.g. databases, file modification) requires sandboxed transactional support.
+3. **Ground-Truth Verification Dependency**: Tasks without formal verification rules cannot be conclusively verified as recovered successes.
 
-### Next Milestone: Milestone 4 — Adaptive Recovery Engine
-- **Targeted Recovery Policies**: Implement bounded, failure-specific recovery mechanisms (tool argument correction, transient retry with exponential backoff, state rollback, and alternative tool substitution).
-- **Comparative Reliability Experiments**: Compare `baseline` vs. `fixed_retry` vs. `traceguard_adaptive` across the benchmark dataset.
+### Next Milestone: Milestone 5 — Experiment Analysis & Interactive Dashboard
+- **React + Vite Frontend Dashboard**: Interactive trajectory viewer displaying step-by-step observable events, diagnostic findings, and recovery diffs.
+- **Comparative Visualizer**: Side-by-side visualization of `baseline`, `fixed_retry`, and `traceguard_recovery` runs.
+- **Failure Taxonomy Heatmap**: Real-time breakdown of failure categories across benchmark tasks and test splits.

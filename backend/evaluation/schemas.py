@@ -14,7 +14,8 @@ CategoryType = Literal[
 AgentModeType = Literal[
     "baseline",
     "fixed_retry",
-    "traceguard"
+    "traceguard",
+    "traceguard_recovery",
 ]
 
 TerminalStatusType = Literal[
@@ -158,10 +159,11 @@ class ExperimentRunRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_agent_mode(self) -> "ExperimentRunRequest":
-        if self.agent_mode != "baseline":
+        valid_modes = {"baseline", "fixed_retry", "traceguard", "traceguard_recovery"}
+        if self.agent_mode not in valid_modes:
             raise ValueError(
-                f"Agent mode '{self.agent_mode}' is not yet supported in Milestone 2. "
-                "Only 'baseline' is currently executable; 'fixed_retry' and 'traceguard' are planned for future milestones."
+                f"Agent mode '{self.agent_mode}' is not supported. "
+                f"Supported modes are: {sorted(list(valid_modes))}."
             )
         return self
 

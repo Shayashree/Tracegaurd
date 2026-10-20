@@ -97,3 +97,8 @@ class TraceEvent(BaseModel):
     output_summary: Optional[str] = None
     error_type: Optional[str] = None
     model_tokens: Optional[Dict[str, int]] = None
+    recovery_attempt_id: Optional[str] = None
+    policy_id: Optional[str] = None
+    action_type: Optional[str] = None
+    finding_ids: Optional[List[str]] = None
+    remaining_budget: Optional[Dict[str, Any]] = None

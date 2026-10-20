@@ -28,6 +28,11 @@ class ToolRegistry:
         """Retrieve tool by name."""
         return self._tools.get(name)
 
+    def get_definition(self, name: str) -> Optional[ToolDefinition]:
+        """Retrieve tool definition by name."""
+        tool = self._tools.get(name)
+        return tool.to_definition() if tool else None
+
     def list_definitions(self, allowed_tools: Optional[List[str]] = None) -> List[ToolDefinition]:
         """Return tool definitions for LLM, optionally filtered by whitelist."""
         defs = []

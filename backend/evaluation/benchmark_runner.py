@@ -199,17 +199,18 @@ class BenchmarkRunner:
                 break
 
         # Milestone 3: Run Trajectory Failure Detector on the executed task's trace
+        diag_report = None
+        task_ctx = {
+            "task_description": task.task_description,
+            "max_steps": request.max_steps or 8,
+            "allowed_tools": task.allowed_tools,
+            "verification_rule": task.verification_rule.model_dump() if hasattr(task.verification_rule, "model_dump") else task.verification_rule,
+            "verification_status": verif_status,
+            "terminal_status": terminal_status,
+        }
         try:
             from backend.reliability.failure_detector import TrajectoryFailureDetector
             detector = TrajectoryFailureDetector()
-            task_ctx = {
-                "task_description": task.task_description,
-                "max_steps": request.max_steps or 8,
-                "allowed_tools": task.allowed_tools,
-                "verification_rule": task.verification_rule.model_dump() if hasattr(task.verification_rule, "model_dump") else task.verification_rule,
-                "verification_status": verif_status,
-                "terminal_status": terminal_status,
-            }
             diag_report = detector.analyze(
                 events=trace_events,
                 task_id=task.task_id,
@@ -221,6 +222,70 @@ class BenchmarkRunner:
         except Exception as e:
             logger.warning(f"Failed to generate diagnostic report for task {task.task_id}: {e}")
 
+        # Milestone 4: Intelligent Recovery & Fixed Retry
+        observed_answer = task_response.final_answer
+        step_count = task_response.steps_count
+        total_duration_ms = task_response.duration_ms
+
+        if request.agent_mode in ("traceguard_recovery", "traceguard") and diag_report:
+            from backend.reliability.recovery_engine import RecoveryEngine
+            from backend.reliability.recovery_report import RecoveryTerminalStatus
+            rec_engine = RecoveryEngine(tool_registry=registry, storage=self.storage)
+            recovery_report = rec_engine.recover(
+                task_response=task_response,
+                task_context=task_ctx,
+                initial_trace_events=trace_events,
+                diag_report=diag_report,
+                experiment_id=experiment_id,
+            )
+            if recovery_report and recovery_report.recovery_attempted:
+                if recovery_report.terminal_status == RecoveryTerminalStatus.RECOVERED_SUCCESSFULLY:
+                    terminal_status = "successful_completion"
+                elif recovery_report.terminal_status == RecoveryTerminalStatus.FAILED_AFTER_RECOVERY:
+                    terminal_status = "incorrect_answer"
+                elif recovery_report.terminal_status == RecoveryTerminalStatus.BUDGET_EXHAUSTED:
+                    terminal_status = "step_limit_exhaustion"
+                elif recovery_report.terminal_status == RecoveryTerminalStatus.TIMEOUT:
+                    terminal_status = "timeout"
+                elif recovery_report.terminal_status in (RecoveryTerminalStatus.ABSTAINED, RecoveryTerminalStatus.UNVERIFIED):
+                    terminal_status = "unverified_completion"
+
+                if recovery_report.final_answer is not None:
+                    observed_answer = recovery_report.final_answer
+                if recovery_report.final_verification_status is not None:
+                    verif_status = recovery_report.final_verification_status
+                    verif_msg = f"Recovery outcome: {recovery_report.terminal_status.value}"
+
+                step_count += recovery_report.budget_usage.steps
+                tool_call_count += recovery_report.additional_tool_calls
+                total_duration_ms = recovery_report.total_execution_duration_ms
+
+        elif request.agent_mode == "fixed_retry":
+            from backend.reliability.recovery_engine import FixedRetryEngine
+            from backend.reliability.recovery_report import RecoveryTerminalStatus
+            retry_engine = FixedRetryEngine(tool_registry=registry, storage=self.storage)
+            retry_report = retry_engine.execute_fixed_retry(
+                task_response=task_response,
+                task_context=task_ctx,
+                initial_trace_events=trace_events,
+                experiment_id=experiment_id,
+            )
+            if retry_report and retry_report.recovery_attempted:
+                if retry_report.terminal_status == RecoveryTerminalStatus.RECOVERED_SUCCESSFULLY:
+                    terminal_status = "successful_completion"
+                elif retry_report.terminal_status == RecoveryTerminalStatus.FAILED_AFTER_RECOVERY:
+                    terminal_status = "incorrect_answer"
+
+                if retry_report.final_answer is not None:
+                    observed_answer = retry_report.final_answer
+                if retry_report.final_verification_status is not None:
+                    verif_status = retry_report.final_verification_status
+                    verif_msg = f"Fixed retry outcome: {retry_report.terminal_status.value}"
+
+                step_count += retry_report.budget_usage.steps
+                tool_call_count += retry_report.additional_tool_calls
+                total_duration_ms = retry_report.total_execution_duration_ms
+
         return TaskExecutionResult(
             experiment_id=experiment_id,
             task_id=task.task_id,
@@ -231,13 +296,13 @@ class BenchmarkRunner:
             completed_at=completed_at,
             terminal_status=terminal_status,
             expected_answer=task.expected_answer,
-            observed_answer=task_response.final_answer,
+            observed_answer=observed_answer,
             verification_status=verif_status,
             verification_message=verif_msg,
-            step_count=task_response.steps_count,
+            step_count=step_count,
             tool_call_count=tool_call_count,
             tool_error_count=tool_error_count,
-            total_duration_ms=task_response.duration_ms,
+            total_duration_ms=round(total_duration_ms, 2),
             model_tokens=model_tokens,
             estimated_cost=None,  # Price unknown for mock model; reported as None
             trace_reference={"task_id": task_response.task_id, "run_id": task_response.run_id},
