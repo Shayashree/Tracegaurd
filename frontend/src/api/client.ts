@@ -17,7 +17,7 @@ import type {
   TraceEvent,
 } from "../types/api";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 export class ApiError extends Error {
   status: number;
@@ -82,7 +82,13 @@ export const api = {
 
   // Benchmarks
   async getBenchmarks(): Promise<string[]> {
-    return request<string[]>("/benchmarks");
+    const data = await request<unknown[]>("/benchmarks");
+    if (Array.isArray(data)) {
+      return data.map((b) =>
+        typeof b === "string" ? b : (b as { benchmark_version?: string }).benchmark_version || String(b)
+      );
+    }
+    return ["v1.0"];
   },
 
   async getBenchmarkTasks(version: string = "v1.0", category?: string): Promise<BenchmarkTask[]> {

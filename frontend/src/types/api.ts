@@ -446,9 +446,15 @@ export interface FailureAnalysis {
 
 export interface DetectorConfig {
   detector_version: string;
-  max_repetition_threshold: number;
-  repetition_ratio_threshold: number;
-  stagnation_step_threshold: number;
-  max_allowed_tool_failures: number;
-  evidence_required_categories: string[];
+  repeated_call_threshold?: number;
+  persistent_tool_failure_threshold?: number;
+  lack_of_progress_threshold?: number;
+  enable_live_observation?: boolean;
+  max_observation_events?: number;
+  min_steps_for_progress_eval?: number;
+  max_repetition_threshold?: number;
+  repetition_ratio_threshold?: number;
+  stagnation_step_threshold?: number;
+  max_allowed_tool_failures?: number;
+  evidence_required_categories?: string[];
 }

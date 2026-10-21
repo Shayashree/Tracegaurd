@@ -38,20 +38,33 @@ export const RunExperimentPage: React.FC = () => {
   const [runStatus, setRunStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadBenchmarkData = async () => {
+    const loadBenchmarks = async () => {
       try {
         const bms = await api.getBenchmarks();
-        if (bms.length > 0) {
+        if (bms && bms.length > 0) {
           setBenchmarks(bms);
-          setSelectedVersion(bms[0]);
+          if (!selectedVersion) {
+            setSelectedVersion(typeof bms[0] === "string" ? bms[0] : (bms[0] as any).benchmark_version || "v1.0");
+          }
         }
-        const taskList = await api.getBenchmarkTasks(selectedVersion);
-        setTasks(taskList);
       } catch (err) {
         console.error("Failed to load benchmarks:", err);
       }
     };
-    loadBenchmarkData();
+    loadBenchmarks();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedVersion) return;
+    const loadTasks = async () => {
+      try {
+        const taskList = await api.getBenchmarkTasks(selectedVersion);
+        setTasks(taskList);
+      } catch (err) {
+        console.error("Failed to load benchmark tasks:", err);
+      }
+    };
+    loadTasks();
   }, [selectedVersion]);
 
   // Handle task checkbox toggle
@@ -204,11 +217,14 @@ export const RunExperimentPage: React.FC = () => {
                 onChange={(e) => setSelectedVersion(e.target.value)}
                 className="w-full text-xs border border-slate-200 rounded p-2 focus:ring-1 focus:ring-indigo-500 font-mono"
               >
-                {benchmarks.map((b) => (
-                  <option key={b} value={b}>
-                    {b} (TraceGuard Evaluation Suite)
-                  </option>
-                ))}
+                {benchmarks.map((b) => {
+                  const val = typeof b === "string" ? b : String((b as any)?.benchmark_version || b);
+                  return (
+                    <option key={val} value={val}>
+                      {val} (TraceGuard Evaluation Suite)
+                    </option>
+                  );
+                })}
               </select>
             </div>
 

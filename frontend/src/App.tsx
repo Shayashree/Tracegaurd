@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
+import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ExperimentsPage } from "./pages/ExperimentsPage";
 import { RunExperimentPage } from "./pages/RunExperimentPage";
@@ -15,21 +16,23 @@ import { SettingsPage } from "./pages/SettingsPage";
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<AppLayout />}>
-          <Route index element={<OverviewPage />} />
-          <Route path="experiments" element={<ExperimentsPage />} />
-          <Route path="run-experiment" element={<RunExperimentPage />} />
-          <Route path="traces" element={<TracesPage />} />
-          <Route path="diagnostics" element={<DiagnosticsPage />} />
-          <Route path="recovery" element={<RecoveryAnalysisPage />} />
-          <Route path="comparison" element={<StrategyComparisonPage />} />
-          <Route path="evaluation" element={<ResearchEvaluationPage />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
+      <ErrorBoundary fallbackTitle="Application Shell Error">
+        <Routes>
+          <Route path="/" element={<AppLayout />}>
+            <Route index element={<ErrorBoundary fallbackTitle="Overview Error"><OverviewPage /></ErrorBoundary>} />
+            <Route path="experiments" element={<ErrorBoundary fallbackTitle="Experiments Error"><ExperimentsPage /></ErrorBoundary>} />
+            <Route path="run-experiment" element={<ErrorBoundary fallbackTitle="Run Experiment Error"><RunExperimentPage /></ErrorBoundary>} />
+            <Route path="traces" element={<ErrorBoundary fallbackTitle="Traces Error"><TracesPage /></ErrorBoundary>} />
+            <Route path="diagnostics" element={<ErrorBoundary fallbackTitle="Diagnostics Error"><DiagnosticsPage /></ErrorBoundary>} />
+            <Route path="recovery" element={<ErrorBoundary fallbackTitle="Recovery Analysis Error"><RecoveryAnalysisPage /></ErrorBoundary>} />
+            <Route path="comparison" element={<ErrorBoundary fallbackTitle="Strategy Comparison Error"><StrategyComparisonPage /></ErrorBoundary>} />
+            <Route path="evaluation" element={<ErrorBoundary fallbackTitle="Research Evaluation Error"><ResearchEvaluationPage /></ErrorBoundary>} />
+            <Route path="reports" element={<ErrorBoundary fallbackTitle="Reports Error"><ReportsPage /></ErrorBoundary>} />
+            <Route path="settings" element={<ErrorBoundary fallbackTitle="Settings Error"><SettingsPage /></ErrorBoundary>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 };

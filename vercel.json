@@ -11,35 +11,15 @@
       "destination": "/api/index.py"
     },
     {
-      "source": "/health(.*)",
+      "source": "/health",
       "destination": "/api/index.py"
     },
     {
-      "source": "/tasks(.*)",
+      "source": "/docs",
       "destination": "/api/index.py"
     },
     {
-      "source": "/benchmarks(.*)",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/experiments(.*)",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/diagnostics(.*)",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/recovery(.*)",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/runs(.*)",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/docs(.*)",
+      "source": "/docs/(.*)",
       "destination": "/api/index.py"
     },
     {
@@ -47,7 +27,7 @@
       "destination": "/api/index.py"
     },
     {
-      "source": "/((?!api|health|benchmarks|experiments|diagnostics|recovery|tasks|runs|docs|openapi.json).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]

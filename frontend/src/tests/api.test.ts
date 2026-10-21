@@ -52,7 +52,7 @@ describe("Frontend API Client Test Suite", () => {
 
     await api.getExperiments({ limit: 10, offset: 20, mode: "traceguard_recovery", status: "completed" });
     expect(fetchSpy).toHaveBeenCalledWith(
-      "/experiments?limit=10&offset=20&mode=traceguard_recovery&status=completed",
+      "/api/experiments?limit=10&offset=20&mode=traceguard_recovery&status=completed",
       expect.anything()
     );
   });
@@ -78,7 +78,7 @@ describe("Frontend API Client Test Suite", () => {
     });
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      "/experiments/run",
+      "/api/experiments/run",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({

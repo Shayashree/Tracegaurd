@@ -104,37 +104,37 @@ export const SettingsPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
             <div className="p-3 bg-slate-50 rounded border border-slate-200">
               <span className="text-2xs text-slate-500 uppercase block">
-                Max Consecutive Repetition Threshold
+                Repeated Call Threshold (F1)
               </span>
               <span className="font-bold text-slate-800">
-                {detectorConfig.max_repetition_threshold} consecutive calls
+                {detectorConfig.repeated_call_threshold ?? detectorConfig.max_repetition_threshold ?? 3} equivalent calls
               </span>
             </div>
 
             <div className="p-3 bg-slate-50 rounded border border-slate-200">
               <span className="text-2xs text-slate-500 uppercase block">
-                Tool Call Repetition Ratio
+                Persistent Tool Failure Threshold (F3)
               </span>
               <span className="font-bold text-slate-800">
-                {(detectorConfig.repetition_ratio_threshold * 100).toFixed(0)}%
+                {detectorConfig.persistent_tool_failure_threshold ?? detectorConfig.max_allowed_tool_failures ?? 2} failures
               </span>
             </div>
 
             <div className="p-3 bg-slate-50 rounded border border-slate-200">
               <span className="text-2xs text-slate-500 uppercase block">
-                Stagnation Step Limit
+                Lack of Progress Threshold (F4)
               </span>
               <span className="font-bold text-slate-800">
-                {detectorConfig.stagnation_step_threshold} steps
+                {detectorConfig.lack_of_progress_threshold ?? detectorConfig.stagnation_step_threshold ?? 3} stagnant steps
               </span>
             </div>
 
             <div className="p-3 bg-slate-50 rounded border border-slate-200">
               <span className="text-2xs text-slate-500 uppercase block">
-                Max Tolerated Tool Failures
+                Max Observation Event Window
               </span>
               <span className="font-bold text-slate-800">
-                {detectorConfig.max_allowed_tool_failures} failures
+                {detectorConfig.max_observation_events ?? 200} events
               </span>
             </div>
           </div>
