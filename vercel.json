@@ -3,47 +3,51 @@
   "outputDirectory": "frontend/dist",
   "rewrites": [
     {
+      "source": "/api",
+      "destination": "/api/index"
+    },
+    {
       "source": "/api/(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/health(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/tasks(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/benchmarks(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/experiments(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/diagnostics(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/recovery(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/runs(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/docs(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/openapi.json",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api|health|benchmarks|experiments|diagnostics|recovery|tasks|runs|docs|openapi.json).*)",
       "destination": "/index.html"
     }
   ]
