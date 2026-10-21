@@ -17,9 +17,10 @@ if str(backend_dir) not in sys.path:
 try:
     from backend.main import app as fastapi_app
 
-    # Ensure /api and /api/index respond gracefully
+    # Ensure /api, /api/index, and /api/index.py respond gracefully
     @fastapi_app.get("/api", include_in_schema=False)
     @fastapi_app.get("/api/index", include_in_schema=False)
+    @fastapi_app.get("/api/index.py", include_in_schema=False)
     def api_root():
         return {
             "status": "ok",
