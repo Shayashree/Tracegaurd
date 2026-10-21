@@ -18,7 +18,15 @@ class TraceStorage:
     """Manages SQLite persistence and JSONL export for tasks and traces."""
 
     def __init__(self, db_path: Optional[str] = None):
-        if (os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")) and not db_path:
+        is_serverless = bool(
+            os.environ.get("VERCEL")
+            or os.environ.get("VERCEL_ENV")
+            or os.environ.get("VERCEL_REGION")
+            or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+            or os.environ.get("LAMBDA_TASK_ROOT")
+            or str(Path(__file__).resolve()).startswith("/var/task")
+        )
+        if is_serverless and not db_path:
             import tempfile
             tmp_dir = Path(tempfile.gettempdir())
             tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -29,6 +37,8 @@ class TraceStorage:
                     Path(BASE_DIR) / "traceguard.db",
                     Path(__file__).resolve().parent.parent / "data" / "traceguard.db",
                     Path(__file__).resolve().parent.parent / "traceguard.db",
+                    Path(__file__).resolve().parent.parent.parent / "data" / "traceguard.db",
+                    Path(__file__).resolve().parent.parent.parent / "traceguard.db",
                     Path.cwd() / "data" / "traceguard.db",
                     Path.cwd() / "traceguard.db",
                     Path("/var/task") / "data" / "traceguard.db",

@@ -22,8 +22,9 @@ except Exception as e:
 
     app = FastAPI(title="TraceGuard Fallback")
 
+    @app.api_route("/", methods=["GET", "POST", "PUT", "DELETE"])
     @app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
-    async def catch_all(path_name: str):
+    async def catch_all(path_name: str = ""):
         return JSONResponse(
             status_code=500,
             content={
