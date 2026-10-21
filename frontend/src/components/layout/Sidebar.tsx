@@ -77,9 +77,9 @@ export const Sidebar: React.FC = () => {
       {/* Footer / Build info */}
       <div className="p-4 border-t border-slate-800 bg-slate-950/30 text-xs text-slate-400">
         <div className="flex items-center justify-between mb-1">
-          <span className="font-medium text-slate-300">Milestone 6</span>
+          <span className="font-medium text-slate-300">Milestone 7</span>
           <span className="inline-block px-1.5 py-0.5 rounded text-2xs bg-slate-800 text-slate-300 font-mono">
-            v0.4.0
+            v0.7.0
           </span>
         </div>
         <p className="text-2xs text-slate-400 leading-tight">

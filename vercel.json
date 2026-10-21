@@ -4,10 +4,19 @@
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.py": {
-      "includeFiles": "data/**"
+      "includeFiles": [
+        "backend/**",
+        "data/**",
+        "traceguard.db",
+        "requirements.txt"
+      ]
     }
   },
   "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
+    },
     {
       "source": "/health(.*)",
       "destination": "/api/index.py"
