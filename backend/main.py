@@ -118,6 +118,8 @@ for r in [
     app.include_router(r, prefix="/api")
 
 @app.get("/", include_in_schema=False)
+@app.get("/api", include_in_schema=False)
+@app.get("/api/index.py", include_in_schema=False)
 def root_redirect():
     """Redirect root to OpenAPI docs."""
     return RedirectResponse(url="/docs")
