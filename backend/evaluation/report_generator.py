@@ -1,5 +1,6 @@
 """Research report generator formatting experiment results into publication-ready Markdown."""
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
+from typing import Any, Dict, List, Optional, Type
 from backend.evaluation.ablation_analysis import AblationAnalysisResult
 from backend.evaluation.experiment_config import ExperimentConfig
 from backend.evaluation.failure_analysis import FailureAnalysisReport

@@ -1,9 +1,10 @@
 """Comprehensive Experiment Runner for TraceGuard Milestone 5.
 Executes multi-mode benchmark comparisons, statistical tests, failure analysis, ablation, and report generation.
 """
+from __future__ import annotations
 import logging
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel, Field
 
 from backend.agents.controller import AgentController

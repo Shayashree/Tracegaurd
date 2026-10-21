@@ -1,4 +1,5 @@
 """SQLite and JSONL storage for tasks and execution traces."""
+from __future__ import annotations
 import json
 import logging
 import os
@@ -6,7 +7,7 @@ import shutil
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 from backend.config import BASE_DIR, settings
 from backend.models.schemas import TaskResponse, TraceEvent, VerificationResult
 

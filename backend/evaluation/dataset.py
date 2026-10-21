@@ -1,8 +1,9 @@
 """Benchmark Dataset Loader and Validator for TraceGuard."""
+from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import ValidationError
 from backend.config import settings
 from backend.evaluation.schemas import BenchmarkTask

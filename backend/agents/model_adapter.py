@@ -1,7 +1,8 @@
 """Model Adapter Interface and Implementations."""
+from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 from backend.config import settings
 from backend.models.schemas import (
     InteractionStep,

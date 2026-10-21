@@ -1,9 +1,10 @@
 """Recovery Engine orchestrating intelligent, bounded, failure-specific recovery and fixed retry."""
+from __future__ import annotations
 import json
 import logging
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from backend.agents.mock_model import MockModelAdapter
 from backend.agents.model_adapter import BaseModelAdapter
 from backend.agents.tool_registry import ToolExecutor, ToolRegistry
