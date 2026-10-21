@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "frontend/dist",
   "functions": {
-    "api/index.py": {
+    "api/*.py": {
       "includeFiles": "{backend/**,data/**,traceguard.db,requirements.txt}"
     }
   },
