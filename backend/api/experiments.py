@@ -3,7 +3,8 @@ import json
 import logging
 import re
 from typing import Any, Dict, List, Optional, Union
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 from backend.api.tasks import get_storage
 from backend.evaluation.benchmark_runner import BenchmarkRunner
 from backend.evaluation.experiment_config import ExperimentConfig
@@ -309,10 +310,11 @@ def get_experiment_ablation(
 @router.get("/{experiment_id}/report")
 def get_experiment_report(
     experiment_id: str,
-    format: str = Query("markdown", pattern="^(markdown|text)$"),
+    request: Request,
+    format: str = Query("markdown", pattern="^(markdown|text|json)$"),
     storage: TraceStorage = Depends(get_storage)
 ) -> Response:
-    """Returns the generated Markdown research report for the experiment."""
+    """Returns the generated Markdown research report for the experiment, generating on-demand if needed."""
     exp = storage.get_experiment(experiment_id)
     if not exp:
         raise HTTPException(
@@ -321,10 +323,31 @@ def get_experiment_report(
         )
     report_md = storage.get_experiment_report(experiment_id)
     if not report_md:
+        try:
+            from backend.evaluation.artifact_generator import generate_and_save_experiment_artifacts
+            gen = generate_and_save_experiment_artifacts(storage, experiment_id)
+            if gen:
+                report_md = gen[0]
+        except Exception as e:
+            logger.error(f"Failed to generate report on-demand for {experiment_id}: {e}", exc_info=True)
+
+    if not report_md:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Research report for experiment '{experiment_id}' not found."
         )
+
+    accept_header = request.headers.get("accept", "")
+    if format == "json" or "application/json" in accept_header:
+        return JSONResponse(
+            content={
+                "experiment_id": experiment_id,
+                "format": format,
+                "report_markdown": report_md,
+                "report": report_md,
+            }
+        )
+
     return Response(content=report_md, media_type="text/markdown")
 
 @router.get("/{experiment_id}/manifest")
@@ -332,7 +355,7 @@ def get_experiment_manifest(
     experiment_id: str,
     storage: TraceStorage = Depends(get_storage)
 ) -> Dict[str, Any]:
-    """Returns the immutable reproducibility manifest with sanitized credentials."""
+    """Returns the immutable reproducibility manifest, generating on-demand if needed."""
     exp = storage.get_experiment(experiment_id)
     if not exp:
         raise HTTPException(
@@ -341,11 +364,56 @@ def get_experiment_manifest(
         )
     manifest = storage.get_experiment_manifest(experiment_id)
     if not manifest:
+        try:
+            from backend.evaluation.artifact_generator import generate_and_save_experiment_artifacts
+            gen = generate_and_save_experiment_artifacts(storage, experiment_id)
+            if gen:
+                manifest = gen[1]
+        except Exception as e:
+            logger.error(f"Failed to generate manifest on-demand for {experiment_id}: {e}", exc_info=True)
+
+    if not manifest:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Reproducibility manifest for experiment '{experiment_id}' not found."
         )
     return manifest
+
+@router.post("/{experiment_id}/generate-report")
+def generate_experiment_report_endpoint(
+    experiment_id: str,
+    storage: TraceStorage = Depends(get_storage)
+) -> Dict[str, Any]:
+    """Explicitly generate or refresh research report and reproducibility manifest artifacts."""
+    exp = storage.get_experiment(experiment_id)
+    if not exp:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Experiment '{experiment_id}' not found."
+        )
+    try:
+        from backend.evaluation.artifact_generator import generate_and_save_experiment_artifacts
+        gen = generate_and_save_experiment_artifacts(storage, experiment_id, force=True)
+        if not gen:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Report generator returned empty results."
+            )
+        report_md, manifest = gen
+        return {
+            "status": "success",
+            "experiment_id": experiment_id,
+            "report_markdown": report_md,
+            "manifest": manifest,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating report for {experiment_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate research report: {str(e)}"
+        )
 
 @router.get("/{experiment_id}/export")
 def export_experiment(

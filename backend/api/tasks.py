@@ -1,6 +1,6 @@
 """Task submission and retrieval endpoints."""
 import logging
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from backend.agents.controller import AgentController
 from backend.models.schemas import TaskCreateRequest, TaskResponse
@@ -38,6 +38,14 @@ def create_task(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal agent execution error: {str(e)}"
         )
+
+@router.get("/recent", response_model=List[dict])
+def list_recent_tasks(
+    limit: int = 25,
+    storage: TraceStorage = Depends(get_storage)
+) -> List[dict]:
+    """Retrieve recent task executions across benchmark and custom runs."""
+    return storage.get_recent_task_summaries(limit=limit)
 
 @router.get("/{task_id}", response_model=TaskResponse)
 def get_task(

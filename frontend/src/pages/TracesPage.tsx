@@ -23,6 +23,13 @@ export const TracesPage: React.FC = () => {
   const [taskIdInput, setTaskIdInput] = useState<string>(urlTaskId);
   const [currentTaskId, setCurrentTaskId] = useState<string>(urlTaskId);
   const [traces, setTraces] = useState<TraceEvent[]>([]);
+  const [recentTasks, setRecentTasks] = useState<Array<{
+    task_id: string;
+    run_id: string;
+    benchmark_task_id?: string;
+    display_label: string;
+    status: string;
+  }>>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +61,25 @@ export const TracesPage: React.FC = () => {
     }
   };
 
+  // Load recent tasks list on mount
+  useEffect(() => {
+    const fetchRecent = async () => {
+      try {
+        const list = await api.getRecentTasks(30);
+        setRecentTasks(list);
+        if (!urlTaskId && list.length > 0) {
+          const defaultTarget = list[0].benchmark_task_id || list[0].task_id;
+          setTaskIdInput(defaultTarget);
+          setCurrentTaskId(defaultTarget);
+          loadTraces(defaultTarget);
+        }
+      } catch (err) {
+        console.error("Could not fetch recent tasks:", err);
+      }
+    };
+    fetchRecent();
+  }, []);
+
   useEffect(() => {
     if (urlTaskId) {
       setTaskIdInput(urlTaskId);
@@ -61,6 +87,14 @@ export const TracesPage: React.FC = () => {
       loadTraces(urlTaskId);
     }
   }, [urlTaskId]);
+
+  const handleSelectRecentTask = (targetId: string) => {
+    if (!targetId) return;
+    setTaskIdInput(targetId);
+    setCurrentTaskId(targetId);
+    setSearchParams({ taskId: targetId });
+    loadTraces(targetId);
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,24 +146,47 @@ export const TracesPage: React.FC = () => {
           </p>
         </div>
 
-        <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
-          <div className="relative min-w-[280px]">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="Enter Task ID (e.g. task_add_01)..."
-              value={taskIdInput}
-              onChange={(e) => setTaskIdInput(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
-            />
-          </div>
-          <button
-            type="submit"
-            className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded transition-colors shadow-2xs"
-          >
-            Load Trace
-          </button>
-        </form>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {recentTasks.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-2xs font-semibold text-slate-500 uppercase shrink-0">Recent:</span>
+              <select
+                value={recentTasks.some(r => (r.benchmark_task_id || r.task_id) === currentTaskId) ? currentTaskId : ""}
+                onChange={(e) => handleSelectRecentTask(e.target.value)}
+                className="text-xs border border-slate-200 rounded px-2.5 py-2 bg-white font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-w-[220px] truncate"
+              >
+                <option value="" disabled>Select Recent Task...</option>
+                {recentTasks.map((t) => {
+                  const val = t.benchmark_task_id || t.task_id;
+                  return (
+                    <option key={t.task_id} value={val}>
+                      {t.display_label} - {t.status}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+
+          <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
+            <div className="relative min-w-[220px]">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Task ID (e.g. ARITH-001)..."
+                value={taskIdInput}
+                onChange={(e) => setTaskIdInput(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+              />
+            </div>
+            <button
+              type="submit"
+              className="px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded transition-colors shadow-2xs shrink-0"
+            >
+              Load
+            </button>
+          </form>
+        </div>
       </div>
 
       {loading && <LoadingSpinner message={`Loading execution trace for task '${currentTaskId}'...`} />}

@@ -41,7 +41,16 @@ export const DiagnosticsPage: React.FC = () => {
       const data = await api.getDiagnostics({ limit: 100 });
       setReports(data);
       if (data.length > 0) {
-        setSelectedReport(data[0]);
+        if (urlTaskId) {
+          const match = data.find(
+            (d) =>
+              d.task_id.toLowerCase() === urlTaskId.toLowerCase() ||
+              d.run_id.toLowerCase() === urlTaskId.toLowerCase()
+          );
+          setSelectedReport(match || data[0]);
+        } else {
+          setSelectedReport(data[0]);
+        }
       }
 
       // If we have an experiment ID, load detector metrics for it

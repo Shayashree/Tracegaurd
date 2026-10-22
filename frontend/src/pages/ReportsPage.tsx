@@ -10,6 +10,8 @@ import {
   Copy,
   Check,
   Fingerprint,
+  RefreshCw,
+  Sparkles,
 } from "lucide-react";
 
 export const ReportsPage: React.FC = () => {
@@ -23,6 +25,7 @@ export const ReportsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"report" | "manifest">("report");
 
   const [loading, setLoading] = useState<boolean>(true);
+  const [generating, setGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
@@ -51,13 +54,42 @@ export const ReportsPage: React.FC = () => {
   const loadReportData = async (id: string) => {
     try {
       const [reportRes, manifestRes] = await Promise.all([
-        api.getExperimentReport(id, "markdown").catch(() => null),
-        api.getExperimentManifest(id).catch(() => null),
+        api.getExperimentReport(id, "markdown").catch((err) => {
+          console.warn("Report load error:", err);
+          return null;
+        }),
+        api.getExperimentManifest(id).catch((err) => {
+          console.warn("Manifest load error:", err);
+          return null;
+        }),
       ]);
-      setReportMarkdown(reportRes?.report_markdown || reportRes?.report || "");
+      let reportText = "";
+      if (typeof reportRes === "string") {
+        reportText = reportRes;
+      } else if (reportRes && typeof reportRes === "object") {
+        reportText = (reportRes as any).report_markdown || (reportRes as any).report || "";
+      }
+      setReportMarkdown(reportText);
       setManifest(manifestRes);
     } catch (err) {
       console.warn("Report load notice:", err);
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    if (!selectedExpId) return;
+    setGenerating(true);
+    setError(null);
+    try {
+      const res = await api.generateExperimentReport(selectedExpId);
+      setReportMarkdown(res.report_markdown || "");
+      if (res.manifest) {
+        setManifest(res.manifest);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate research report");
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -150,15 +182,26 @@ export const ReportsPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Download Buttons */}
+            {/* Download and Action Buttons */}
             <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handleGenerateReport}
+                disabled={generating}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors shadow-2xs disabled:opacity-50"
+                title="Regenerate Research Report & Reproducibility Manifest"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${generating ? "animate-spin" : ""}`} />
+                {generating ? "Generating..." : "Regenerate Report"}
+              </button>
+
               <button
                 onClick={() =>
                   activeTab === "report"
                     ? downloadTextFile(reportMarkdown, `${selectedExpId}_report.md`)
                     : downloadTextFile(JSON.stringify(manifest, null, 2), `${selectedExpId}_manifest.json`, "application/json")
                 }
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded hover:bg-slate-50 transition-colors shadow-2xs"
+                disabled={activeTab === "report" ? !reportMarkdown : !manifest}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50"
               >
                 <Download className="w-3.5 h-3.5" /> Download Active Document
               </button>
@@ -185,7 +228,8 @@ export const ReportsPage: React.FC = () => {
                     activeTab === "report" ? reportMarkdown : JSON.stringify(manifest, null, 2)
                   )
                 }
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded hover:bg-slate-50 transition-colors"
+                disabled={activeTab === "report" ? !reportMarkdown : !manifest}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded hover:bg-slate-50 transition-colors disabled:opacity-50"
                 title="Copy to clipboard"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
@@ -201,8 +245,19 @@ export const ReportsPage: React.FC = () => {
                   {reportMarkdown}
                 </div>
               ) : (
-                <div className="p-8 text-center text-xs text-slate-400 italic">
-                  No research report generated for this experiment.
+                <div className="p-12 text-center space-y-4">
+                  <div className="text-slate-500 text-xs">
+                    No research report has been generated yet for experiment{" "}
+                    <span className="font-mono font-medium text-slate-800">{selectedExpId}</span>.
+                  </div>
+                  <button
+                    onClick={handleGenerateReport}
+                    disabled={generating}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors shadow-xs disabled:opacity-50"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {generating ? "Generating Research Report..." : "Generate Research Report Now"}
+                  </button>
                 </div>
               )}
             </div>

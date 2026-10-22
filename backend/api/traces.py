@@ -16,14 +16,14 @@ def get_task_traces(
     task_id: str,
     storage: TraceStorage = Depends(get_storage)
 ) -> List[TraceEvent]:
-    """Retrieve ordered execution events recorded for the given task."""
-    task = storage.get_task(task_id)
-    if not task:
+    """Retrieve ordered execution events recorded for the given task, run_id, or benchmark ID."""
+    events = storage.get_events(task_id)
+    if not events and not storage.get_task(task_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task with ID '{task_id}' not found."
+            detail=f"Task or run with ID '{task_id}' not found."
         )
-    return storage.get_events(task_id)
+    return events
 
 @router.get("/{task_id}/traces/export")
 def export_task_traces_jsonl(
@@ -31,11 +31,11 @@ def export_task_traces_jsonl(
     storage: TraceStorage = Depends(get_storage)
 ) -> Response:
     """Export the execution trace as JSON Lines (JSONL)."""
-    task = storage.get_task(task_id)
-    if not task:
+    events = storage.get_events(task_id)
+    if not events and not storage.get_task(task_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task with ID '{task_id}' not found."
+            detail=f"Task or run with ID '{task_id}' not found."
         )
 
     jsonl_content = storage.export_jsonl(task_id)

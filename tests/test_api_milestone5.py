@@ -69,3 +69,39 @@ def test_api_full_experiment_workflow(test_client):
     res_exp_jsonl = client.get(f"/experiments/{exp_id}/export?format=jsonl")
     assert res_exp_jsonl.status_code == 200
     assert res_exp_jsonl.text.strip() != ""
+
+def test_api_generate_report_endpoint_and_ondemand(test_client):
+    """Test explicit generate-report endpoint and on-demand report generation."""
+    client, storage = test_client
+
+    # Run single-mode benchmark request that does not run full multi-mode pipeline
+    payload = {
+        "benchmark_version": "v1.0",
+        "task_ids": ["ARITH-001"],
+        "agent_mode": "baseline",
+        "repetitions": 1,
+    }
+    res = client.post("/experiments/run", json=payload)
+    assert res.status_code == 201
+    exp_id = res.json()["experiment_id"]
+
+    # 1. On-demand GET report
+    res_rep = client.get(f"/experiments/{exp_id}/report")
+    assert res_rep.status_code == 200
+    assert "# TraceGuard Research Report" in res_rep.text
+
+    # 2. JSON format report
+    res_json = client.get(f"/experiments/{exp_id}/report?format=json")
+    assert res_json.status_code == 200
+    data = res_json.json()
+    assert data["experiment_id"] == exp_id
+    assert "report_markdown" in data
+
+    # 3. Explicit POST generate-report
+    res_gen = client.post(f"/experiments/{exp_id}/generate-report")
+    assert res_gen.status_code == 200
+    gen_data = res_gen.json()
+    assert gen_data["status"] == "success"
+    assert "report_markdown" in gen_data
+    assert "manifest" in gen_data
+

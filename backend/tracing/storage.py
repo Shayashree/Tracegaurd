@@ -349,11 +349,25 @@ class TraceStorage:
             conn.commit()
 
     def get_task(self, task_id: str) -> Optional[TaskResponse]:
-        """Retrieve task by task_id."""
+        """Retrieve task by task_id, run_id, or benchmark task_id."""
         with self._lock, self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,))
             row = cursor.fetchone()
+            if not row:
+                # Resolve by run_id
+                cursor.execute("SELECT * FROM tasks WHERE run_id = ?", (task_id,))
+                row = cursor.fetchone()
+            if not row:
+                # Resolve by benchmark task_id from experiment_results
+                cursor.execute(
+                    "SELECT run_id FROM experiment_results WHERE task_id = ? ORDER BY id DESC LIMIT 1",
+                    (task_id,)
+                )
+                res = cursor.fetchone()
+                if res and res["run_id"]:
+                    cursor.execute("SELECT * FROM tasks WHERE run_id = ?", (res["run_id"],))
+                    row = cursor.fetchone()
             if not row:
                 return None
 
@@ -373,6 +387,38 @@ class TraceStorage:
                 created_at=row["created_at"],
                 completed_at=row["completed_at"],
             )
+
+    def get_recent_task_summaries(self, limit: int = 25) -> List[Dict[str, Any]]:
+        """Fetch latest executed tasks with resolved benchmark task IDs and experiment references."""
+        with self._lock, self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT t.task_id, t.run_id, t.task, t.status, t.steps_count, t.duration_ms, t.created_at,
+                       er.task_id as benchmark_task_id, er.experiment_id
+                FROM tasks t
+                LEFT JOIN experiment_results er ON t.run_id = er.run_id
+                ORDER BY t.created_at DESC
+                LIMIT ?
+            """, (limit,))
+            rows = cursor.fetchall()
+            result = []
+            for r in rows:
+                bench_id = r["benchmark_task_id"]
+                tid = r["task_id"]
+                label = f"{bench_id} ({tid})" if bench_id else tid
+                result.append({
+                    "task_id": tid,
+                    "run_id": r["run_id"],
+                    "benchmark_task_id": bench_id,
+                    "experiment_id": r["experiment_id"],
+                    "task_prompt": r["task"],
+                    "status": r["status"],
+                    "steps_count": r["steps_count"],
+                    "duration_ms": r["duration_ms"],
+                    "created_at": r["created_at"],
+                    "display_label": label,
+                })
+            return result
 
     def save_events(self, events: List[TraceEvent]) -> None:
         """Insert a batch of trace events."""
@@ -413,7 +459,7 @@ class TraceStorage:
             conn.commit()
 
     def get_events(self, task_id: str) -> List[TraceEvent]:
-        """Get ordered execution trace events for a given task."""
+        """Get ordered execution trace events for a given task, run_id, or benchmark task_id."""
         with self._lock, self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -426,6 +472,39 @@ class TraceStorage:
                 ORDER BY id ASC
             """, (task_id,))
             rows = cursor.fetchall()
+
+            if not rows:
+                # Check if task_id matches a run_id directly
+                cursor.execute("""
+                    SELECT task_id, run_id, step_index, event_type, tool_name, status,
+                           timestamp, duration_ms, input_summary, output_summary,
+                           error_type, model_tokens_json, recovery_attempt_id, policy_id,
+                           action_type, finding_ids_json, remaining_budget_json
+                    FROM trace_events
+                    WHERE run_id = ?
+                    ORDER BY id ASC
+                """, (task_id,))
+                rows = cursor.fetchall()
+
+            if not rows:
+                # Check if task_id matches a benchmark task_id in experiment_results
+                cursor.execute(
+                    "SELECT run_id FROM experiment_results WHERE task_id = ? ORDER BY id DESC LIMIT 1",
+                    (task_id,)
+                )
+                res = cursor.fetchone()
+                if res and res["run_id"]:
+                    cursor.execute("""
+                        SELECT task_id, run_id, step_index, event_type, tool_name, status,
+                               timestamp, duration_ms, input_summary, output_summary,
+                               error_type, model_tokens_json, recovery_attempt_id, policy_id,
+                               action_type, finding_ids_json, remaining_budget_json
+                        FROM trace_events
+                        WHERE run_id = ?
+                        ORDER BY id ASC
+                    """, (res["run_id"],))
+                    rows = cursor.fetchall()
+
             events = []
             for r in rows:
                 tokens = json.loads(r["model_tokens_json"]) if r["model_tokens_json"] else None
@@ -768,7 +847,7 @@ class TraceStorage:
             return DiagnosticReport.model_validate(data)
 
     def get_diagnostics_for_task(self, task_id: str) -> List[Any]:
-        """Fetch all diagnostic reports for a task_id."""
+        """Fetch all diagnostic reports for a task_id, run_id, or benchmark task_id."""
         from backend.reliability.diagnostic_report import DiagnosticReport
         with self._lock, self._connection() as conn:
             cursor = conn.cursor()
@@ -778,6 +857,26 @@ class TraceStorage:
                 ORDER BY created_at DESC
             """, (task_id,))
             rows = cursor.fetchall()
+            if not rows:
+                cursor.execute("""
+                    SELECT report_json FROM diagnostic_reports
+                    WHERE run_id = ?
+                    ORDER BY created_at DESC
+                """, (task_id,))
+                rows = cursor.fetchall()
+            if not rows:
+                cursor.execute(
+                    "SELECT run_id FROM experiment_results WHERE task_id = ? ORDER BY id DESC LIMIT 1",
+                    (task_id,)
+                )
+                res = cursor.fetchone()
+                if res and res["run_id"]:
+                    cursor.execute("""
+                        SELECT report_json FROM diagnostic_reports
+                        WHERE run_id = ?
+                        ORDER BY created_at DESC
+                    """, (res["run_id"],))
+                    rows = cursor.fetchall()
             return [DiagnosticReport.model_validate(json.loads(r["report_json"])) for r in rows]
 
     def get_diagnostics_for_experiment(self, experiment_id: str) -> List[Any]:
@@ -909,7 +1008,7 @@ class TraceStorage:
             return RecoveryReport.model_validate(json.loads(row["report_json"]))
 
     def get_recovery_for_task(self, task_id: str) -> Optional[Any]:
-        """Fetch latest recovery report for a specific task_id."""
+        """Fetch latest recovery report for a specific task_id, run_id, or benchmark task_id."""
         from backend.reliability.recovery_report import RecoveryReport
         with self._lock, self._connection() as conn:
             cursor = conn.cursor()
@@ -919,6 +1018,26 @@ class TraceStorage:
                 ORDER BY created_at DESC LIMIT 1
             """, (task_id,))
             row = cursor.fetchone()
+            if not row:
+                cursor.execute("""
+                    SELECT report_json FROM recovery_reports
+                    WHERE run_id = ?
+                    ORDER BY created_at DESC LIMIT 1
+                """, (task_id,))
+                row = cursor.fetchone()
+            if not row:
+                cursor.execute(
+                    "SELECT run_id FROM experiment_results WHERE task_id = ? ORDER BY id DESC LIMIT 1",
+                    (task_id,)
+                )
+                res = cursor.fetchone()
+                if res and res["run_id"]:
+                    cursor.execute("""
+                        SELECT report_json FROM recovery_reports
+                        WHERE run_id = ?
+                        ORDER BY created_at DESC LIMIT 1
+                    """, (res["run_id"],))
+                    row = cursor.fetchone()
             if not row:
                 return None
             return RecoveryReport.model_validate(json.loads(row["report_json"]))

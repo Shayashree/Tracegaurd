@@ -107,6 +107,13 @@ class BenchmarkRunner:
         )
         self.storage.save_experiment(final_summary)
 
+        # Generate and persist research report and reproducibility manifest artifacts
+        try:
+            from backend.evaluation.artifact_generator import generate_and_save_experiment_artifacts
+            generate_and_save_experiment_artifacts(self.storage, experiment_id)
+        except Exception as e:
+            logger.warning(f"Advisory during artifact generation for [{experiment_id}]: {e}")
+
         logger.info(
             f"Experiment [{experiment_id}] completed with Success Rate: {metrics.success_rate}% "
             f"({metrics.successful_tasks}/{metrics.total_attempted})"

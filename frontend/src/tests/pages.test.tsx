@@ -24,6 +24,7 @@ vi.mock("../api/client", () => ({
     getDetectorConfig: vi.fn().mockResolvedValue({}),
     getRecoveryReports: vi.fn().mockResolvedValue([]),
     getTaskTraces: vi.fn().mockResolvedValue([]),
+    getRecentTasks: vi.fn().mockResolvedValue([]),
     getExperimentComparisons: vi.fn().mockResolvedValue([]),
     getExperimentFailureAnalysis: vi.fn().mockResolvedValue({}),
     getExperimentAblation: vi.fn().mockResolvedValue({}),

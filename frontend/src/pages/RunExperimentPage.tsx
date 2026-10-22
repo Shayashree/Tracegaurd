@@ -177,16 +177,34 @@ export const RunExperimentPage: React.FC = () => {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => navigate(`/experiments?id=${createdExperimentId}`)}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded transition-colors shadow-2xs"
+                className="px-2.5 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded transition-colors shadow-2xs"
               >
                 Inspect Results
               </button>
               <button
+                onClick={() => navigate(`/traces`)}
+                className="px-2.5 py-1.5 text-xs font-semibold text-emerald-900 bg-white border border-emerald-300 hover:bg-emerald-100 rounded transition-colors shadow-2xs"
+              >
+                Execution Traces
+              </button>
+              <button
+                onClick={() => navigate(`/diagnostics?experimentId=${createdExperimentId}`)}
+                className="px-2.5 py-1.5 text-xs font-semibold text-emerald-900 bg-white border border-emerald-300 hover:bg-emerald-100 rounded transition-colors shadow-2xs"
+              >
+                Diagnostics
+              </button>
+              <button
+                onClick={() => navigate(`/recovery?experimentId=${createdExperimentId}`)}
+                className="px-2.5 py-1.5 text-xs font-semibold text-emerald-900 bg-white border border-emerald-300 hover:bg-emerald-100 rounded transition-colors shadow-2xs"
+              >
+                Recovery
+              </button>
+              <button
                 onClick={() => navigate(`/reports?id=${createdExperimentId}`)}
-                className="px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 hover:bg-emerald-100 rounded transition-colors"
+                className="px-2.5 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-100/60 border border-emerald-300 hover:bg-emerald-200 rounded transition-colors"
               >
                 View Report
               </button>

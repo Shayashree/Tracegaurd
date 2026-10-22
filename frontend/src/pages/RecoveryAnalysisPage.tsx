@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { RecoveryReport } from "../types/api";
 import { StatusBadge } from "../components/common/StatusBadge";
@@ -21,12 +21,15 @@ import {
 } from "lucide-react";
 
 export const RecoveryAnalysisPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const urlTaskId = searchParams.get("taskId") || "";
+
   const [reports, setReports] = useState<RecoveryReport[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>(urlTaskId);
   const [policyFilter, setPolicyFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -41,7 +44,16 @@ export const RecoveryAnalysisPage: React.FC = () => {
       const data = await api.getRecoveryReports({ limit: 100 });
       setReports(data);
       if (data.length > 0) {
-        setSelectedReport(data[0]);
+        if (urlTaskId) {
+          const match = data.find(
+            (r) =>
+              r.task_id.toLowerCase().includes(urlTaskId.toLowerCase()) ||
+              r.run_id.toLowerCase().includes(urlTaskId.toLowerCase())
+          );
+          setSelectedReport(match || data[0]);
+        } else {
+          setSelectedReport(data[0]);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load recovery reports");
@@ -64,6 +76,9 @@ export const RecoveryAnalysisPage: React.FC = () => {
       const matchSearch =
         searchQuery === "" ||
         r.task_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (r.run_id && r.run_id.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (r.initial_failure_category && r.initial_failure_category.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (r.selection_reason && r.selection_reason.toLowerCase().includes(searchQuery.toLowerCase())) ||
         r.policy_id.toLowerCase().includes(searchQuery.toLowerCase());
       const matchPolicy = policyFilter === "all" || r.policy_id === policyFilter;
       const matchStatus = statusFilter === "all" || r.terminal_status === statusFilter;

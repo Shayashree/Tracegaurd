@@ -166,9 +166,17 @@ export const api = {
 
   async getExperimentReport(
     experimentId: string,
-    format: "markdown" | "text" = "markdown"
-  ): Promise<{ experiment_id: string; format: string; report_markdown?: string; report?: string }> {
+    format: "markdown" | "text" | "json" = "markdown"
+  ): Promise<{ experiment_id?: string; format?: string; report_markdown?: string; report?: string } | string> {
     return request(`/experiments/${encodeURIComponent(experimentId)}/report?format=${format}`);
+  },
+
+  async generateExperimentReport(
+    experimentId: string
+  ): Promise<{ status: string; experiment_id: string; report_markdown: string; manifest: Record<string, unknown> }> {
+    return request(`/experiments/${encodeURIComponent(experimentId)}/generate-report`, {
+      method: "POST",
+    });
   },
 
   async getExperimentManifest(experimentId: string): Promise<Record<string, unknown>> {
@@ -179,7 +187,22 @@ export const api = {
     return `${BASE_URL}/experiments/${encodeURIComponent(experimentId)}/export?format=${format}`;
   },
 
-  // Traces
+  // Traces & Tasks
+  async getRecentTasks(limit: number = 25): Promise<Array<{
+    task_id: string;
+    run_id: string;
+    task_prompt: string;
+    status: string;
+    steps_count: number;
+    duration_ms: number;
+    created_at: string;
+    benchmark_task_id?: string;
+    experiment_id?: string;
+    display_label: string;
+  }>> {
+    return request(`/tasks/recent?limit=${limit}`);
+  },
+
   async getTaskTraces(taskId: string): Promise<TraceEvent[]> {
     return request<TraceEvent[]>(`/tasks/${encodeURIComponent(taskId)}/traces`);
   },
