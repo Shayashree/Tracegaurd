@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import type { BenchmarkTask, CategoryType } from "../types/api";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
@@ -11,6 +11,7 @@ import {
   Settings2,
   Sliders,
   Check,
+  Sparkles,
 } from "lucide-react";
 
 export const RunExperimentPage: React.FC = () => {
@@ -154,13 +155,22 @@ export const RunExperimentPage: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <div>
-        <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-          Launch Benchmark Evaluation Experiment
-        </h2>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Execute controlled tasks under Baseline, Fixed Retry, or TraceGuard Recovery modes.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+            Launch Benchmark Evaluation Experiment
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Execute controlled tasks under Baseline, Fixed Retry, or TraceGuard Recovery modes.
+          </p>
+        </div>
+        <Link
+          to="/traces?assign=true"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold transition-colors shrink-0 shadow-2xs"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+          Assign Custom Task instead &rarr;
+        </Link>
       </div>
 
       {createdExperimentId && (

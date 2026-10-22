@@ -10,15 +10,24 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
+from backend.reliability.failure_detector import TrajectoryFailureDetector
+
 # Module-level instances (can be overridden in tests or app state)
 _default_storage = TraceStorage()
-_default_controller = AgentController(storage=_default_storage)
+_default_detector = TrajectoryFailureDetector()
+_default_controller = AgentController(storage=_default_storage, failure_detector=_default_detector)
 
 def get_storage() -> TraceStorage:
     return _default_storage
 
-def get_controller(storage: TraceStorage = Depends(get_storage)) -> AgentController:
-    return AgentController(storage=storage)
+def get_detector() -> TrajectoryFailureDetector:
+    return _default_detector
+
+def get_controller(
+    storage: TraceStorage = Depends(get_storage),
+    detector: TrajectoryFailureDetector = Depends(get_detector)
+) -> AgentController:
+    return AgentController(storage=storage, failure_detector=detector)
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 def create_task(

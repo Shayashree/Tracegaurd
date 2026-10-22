@@ -108,3 +108,32 @@ def test_api_invalid_request(client):
     # Missing required 'task' field
     resp = client.post("/tasks", json={})
     assert resp.status_code == 422
+
+def test_api_assign_custom_task(client):
+    payload = {
+        "task": "Find the prices of Product A and Product B, then calculate their combined price.",
+        "max_steps": 6,
+        "timeout_seconds": 25.0,
+        "allowed_tools": ["calculator", "data_lookup"],
+        "verification_rule": {
+            "type": "numerical_tolerance",
+            "expected_value": 130.0,
+            "tolerance": 0.05
+        },
+        "agent_mode": "traceguard_recovery"
+    }
+    resp = client.post("/tasks", json=payload)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["status"] == "completed"
+    assert "130" in data["final_answer"]
+    assert data["verification"]["verified"] is True
+
+    # Check recent tasks listing
+    recent_resp = client.get("/tasks/recent?limit=10")
+    assert recent_resp.status_code == 200
+    recent = recent_resp.json()
+    assert len(recent) > 0
+    latest = recent[0]
+    assert latest["task_id"] == data["task_id"]
+    assert "Custom:" in latest["display_label"]

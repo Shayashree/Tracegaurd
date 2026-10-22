@@ -405,7 +405,12 @@ class TraceStorage:
             for r in rows:
                 bench_id = r["benchmark_task_id"]
                 tid = r["task_id"]
-                label = f"{bench_id} ({tid})" if bench_id else tid
+                if bench_id:
+                    label = f"{bench_id} ({tid})"
+                else:
+                    snippet = (r["task"] or "").strip().replace("\n", " ")
+                    short_snippet = snippet[:28] + ("..." if len(snippet) > 28 else "")
+                    label = f"Custom: \"{short_snippet}\" ({tid})" if short_snippet else tid
                 result.append({
                     "task_id": tid,
                     "run_id": r["run_id"],

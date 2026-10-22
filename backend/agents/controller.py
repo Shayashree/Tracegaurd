@@ -311,6 +311,8 @@ class AgentController:
                     "max_steps": max_steps,
                     "allowed_tools": allowed_tools,
                     "verification_rule": request.verification_rule.model_dump() if request.verification_rule else None,
+                    "verification_status": verification_result.status if verification_result else "unverified",
+                    "terminal_status": task_status,
                 }
                 diag_report = self.failure_detector.analyze(
                     events=events,
@@ -319,8 +321,31 @@ class AgentController:
                     task_context=task_ctx,
                 )
                 self.storage.save_diagnostic_report(diag_report)
+
+                mode = getattr(request, "agent_mode", "baseline")
+                if mode in ("traceguard_recovery", "traceguard") and diag_report and diag_report.findings:
+                    from backend.reliability.recovery_engine import RecoveryEngine
+                    from backend.reliability.recovery_report import RecoveryTerminalStatus
+                    rec_engine = RecoveryEngine(tool_registry=self.tool_registry, storage=self.storage, model_adapter=self.model_adapter)
+                    rec_rep = rec_engine.recover(
+                        task_response=response,
+                        task_context=task_ctx,
+                        initial_trace_events=events,
+                        diag_report=diag_report,
+                    )
+                    if rec_rep and rec_rep.recovery_attempted:
+                        response.recovery_status = rec_rep.terminal_status.value
+                        if rec_rep.terminal_status == RecoveryTerminalStatus.RECOVERED_SUCCESSFULLY:
+                            response.status = "completed"
+                            if rec_rep.final_answer:
+                                response.final_answer = rec_rep.final_answer
+                            if response.verification:
+                                response.verification.verified = True
+                                response.verification.status = "verified"
+                                response.verification.verification_message = f"Recovered successfully: {rec_rep.terminal_status.value}"
+                        self.storage.save_task(response)
             except Exception as e:
-                logger.warning(f"Passive diagnostic analysis error for task [{task_id}]: {e}")
+                logger.warning(f"Passive diagnostic/recovery analysis error for task [{task_id}]: {e}")
 
         logger.info(f"Task completed [{task_id}] with status={task_status} in {total_duration_ms:.1f}ms")
         return response

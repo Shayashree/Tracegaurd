@@ -13,7 +13,9 @@ import type {
   StatisticalComparison,
   AblationAnalysis,
   FailureAnalysis,
+  TaskCreatePayload,
   TaskExecutionResult,
+  TaskResponse,
   TraceEvent,
 } from "../types/api";
 
@@ -209,6 +211,17 @@ export const api = {
 
   async getTaskTraces(taskId: string): Promise<TraceEvent[]> {
     return request<TraceEvent[]>(`/tasks/${encodeURIComponent(taskId)}/traces`);
+  },
+
+  async createTask(payload: TaskCreatePayload): Promise<TaskResponse> {
+    return request<TaskResponse>("/tasks", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getTask(taskId: string): Promise<TaskResponse> {
+    return request<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}`);
   },
 
   getTaskTraceExportUrl(taskId: string): string {

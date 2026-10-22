@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { TraceEvent } from "../types/api";
+import type { TraceEvent, TaskResponse } from "../types/api";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { ErrorMessage } from "../components/common/ErrorMessage";
 import { EmptyState } from "../components/common/EmptyState";
+import { AssignCustomTaskModal } from "../components/tasks/AssignCustomTaskModal";
 import {
   GitCommitVertical,
   Search,
@@ -14,11 +15,13 @@ import {
   ChevronRight,
   Copy,
   Check,
+  Sparkles,
 } from "lucide-react";
 
 export const TracesPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlTaskId = searchParams.get("taskId") || "";
+  const initialAssign = searchParams.get("assign") === "true";
 
   const [taskIdInput, setTaskIdInput] = useState<string>(urlTaskId);
   const [currentTaskId, setCurrentTaskId] = useState<string>(urlTaskId);
@@ -32,6 +35,7 @@ export const TracesPage: React.FC = () => {
   }>>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState<boolean>(initialAssign);
 
   // Filters
   const [selectedEventType, setSelectedEventType] = useState<string>("all");
@@ -87,6 +91,21 @@ export const TracesPage: React.FC = () => {
       loadTraces(urlTaskId);
     }
   }, [urlTaskId]);
+
+  useEffect(() => {
+    if (searchParams.get("assign") === "true") {
+      setIsAssignModalOpen(true);
+    }
+  }, [searchParams]);
+
+  const handleTaskCompleted = (taskResponse: TaskResponse) => {
+    const newId = taskResponse.task_id;
+    setTaskIdInput(newId);
+    setCurrentTaskId(newId);
+    setSearchParams({ taskId: newId });
+    loadTraces(newId);
+    api.getRecentTasks(30).then(setRecentTasks).catch(console.error);
+  };
 
   const handleSelectRecentTask = (targetId: string) => {
     if (!targetId) return;
@@ -169,11 +188,11 @@ export const TracesPage: React.FC = () => {
           )}
 
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
-            <div className="relative min-w-[220px]">
+            <div className="relative min-w-[200px]">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="Task ID (e.g. ARITH-001)..."
+                placeholder="Task ID (e.g. task_abc123)..."
                 value={taskIdInput}
                 onChange={(e) => setTaskIdInput(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 text-xs rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
@@ -181,11 +200,20 @@ export const TracesPage: React.FC = () => {
             </div>
             <button
               type="submit"
-              className="px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded transition-colors shadow-2xs shrink-0"
+              className="px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded transition-colors shadow-2xs shrink-0 cursor-pointer"
             >
               Load
             </button>
           </form>
+
+          <button
+            type="button"
+            onClick={() => setIsAssignModalOpen(true)}
+            className="px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-all shadow-xs flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Assign Custom Task
+          </button>
         </div>
       </div>
 
@@ -202,7 +230,9 @@ export const TracesPage: React.FC = () => {
       {!loading && !error && traces.length === 0 && (
         <EmptyState
           title="No Execution Trace Loaded"
-          description="Enter a valid Task ID from your experiment results or select one from the Experiments page to inspect its step-by-step observable trajectory."
+          description="Enter a valid Task ID from your experiment results, select one from the Recent list, or assign a custom task to observe live execution."
+          actionText="Assign Custom Task"
+          onAction={() => setIsAssignModalOpen(true)}
           icon={<GitCommitVertical className="w-8 h-8 text-indigo-500" />}
         />
       )}
@@ -528,6 +558,12 @@ export const TracesPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Assign Custom Task Modal */}
+      <AssignCustomTaskModal
+        isOpen={isAssignModalOpen}
+        onClose={() => setIsAssignModalOpen(false)}
+        onTaskCompleted={handleTaskCompleted}
+      />
     </div>
   );
 };

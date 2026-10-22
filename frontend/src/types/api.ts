@@ -88,6 +88,31 @@ export interface VerificationResult {
   verification_message: string;
 }
 
+export interface TaskCreatePayload {
+  task: string;
+  max_steps?: number;
+  timeout_seconds?: number;
+  allowed_tools?: string[];
+  verification_rule?: VerificationRule;
+  mock_scenario?: string;
+  agent_mode?: AgentModeType | string;
+}
+
+export interface TaskResponse {
+  task_id: string;
+  run_id: string;
+  task: string;
+  status: TerminalStatusType | "pending" | "running" | "completed" | "failed" | "step_limit_reached" | "timed_out";
+  final_answer?: string | null;
+  error_info?: string | null;
+  verification?: VerificationResult | null;
+  steps_count: number;
+  duration_ms: number;
+  created_at: string;
+  completed_at?: string | null;
+  recovery_status?: string | null;
+}
+
 export interface BenchmarkTask {
   task_id: string;
   benchmark_version: string;

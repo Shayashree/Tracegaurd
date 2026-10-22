@@ -68,6 +68,7 @@ class TaskCreateRequest(BaseModel):
     allowed_tools: Optional[List[str]] = Field(None, description="Whitelist of allowed tool names")
     verification_rule: Optional[VerificationRule] = Field(None, description="Optional deterministic rule to verify the outcome")
     mock_scenario: Optional[str] = Field(None, description="Optional preset scenario key for deterministic mock model testing")
+    agent_mode: Optional[str] = Field("traceguard_recovery", description="Agent execution mode (baseline, fixed_retry, traceguard_recovery)")
 
 class TaskResponse(BaseModel):
     """API response summarizing task execution and verification."""
@@ -82,6 +83,7 @@ class TaskResponse(BaseModel):
     duration_ms: float
     created_at: str
     completed_at: Optional[str] = None
+    recovery_status: Optional[str] = None
 
 class TraceEvent(BaseModel):
     """Structured execution trace event adhering to Milestone 1 specifications."""

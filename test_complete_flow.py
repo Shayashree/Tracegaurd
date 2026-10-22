@@ -77,7 +77,8 @@ def main():
     diags = res_diag.json()
     print(f"Diagnostics for task {task_id}: {len(diags)} report(s)")
     if diags:
-        print(f"Primary Failure Classification: {diags[0]['failure_category']} (Confidence: {diags[0]['confidence']})")
+        cat = diags[0].get("primary_failure_category") or diags[0].get("failure_category") or diags[0].get("diagnostic_status")
+        print(f"Diagnostic Assessment: {cat} (Status: {diags[0].get('diagnostic_status')})")
 
     # 5. Milestone 5 Multi-Mode Experiment Execution
     print_step(5, "Evaluation Experiment Execution Across Agent Modes")
