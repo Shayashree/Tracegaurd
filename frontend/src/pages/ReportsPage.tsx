@@ -1,20 +1,25 @@
 import React, { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api } from "../api/client";
 import type { ExperimentSummary } from "../types/api";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { ErrorMessage } from "../components/common/ErrorMessage";
 import {
   FileText,
+  Code2,
   Download,
   Copy,
   Check,
   Fingerprint,
   RefreshCw,
   Sparkles,
+  PlayCircle,
 } from "lucide-react";
 
 export const ReportsPage: React.FC = () => {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialExpId = searchParams.get("id") || "";
 
@@ -22,7 +27,7 @@ export const ReportsPage: React.FC = () => {
   const [selectedExpId, setSelectedExpId] = useState<string>(initialExpId);
   const [reportMarkdown, setReportMarkdown] = useState<string>("");
   const [manifest, setManifest] = useState<Record<string, unknown> | null>(null);
-  const [activeTab, setActiveTab] = useState<"report" | "manifest">("report");
+  const [activeTab, setActiveTab] = useState<"formatted" | "raw" | "manifest">("formatted");
 
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
@@ -36,14 +41,17 @@ export const ReportsPage: React.FC = () => {
       try {
         const expList = await api.getExperiments({ limit: 50 });
         setExperiments(expList);
-        const targetId =
-          selectedExpId || (expList.length > 0 ? expList[0].experiment_id : "");
-        if (targetId) {
+        if (expList.length > 0) {
+          const hasSelected = expList.some((e) => e.experiment_id === selectedExpId);
+          const targetId = hasSelected ? selectedExpId : expList[0].experiment_id;
           setSelectedExpId(targetId);
+          setSearchParams({ id: targetId });
           await loadReportData(targetId);
+        } else {
+          setSelectedExpId("");
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load reports");
+        setError(err instanceof Error ? err.message : "Failed to load experiments list");
       } finally {
         setLoading(false);
       }
@@ -154,6 +162,22 @@ export const ReportsPage: React.FC = () => {
 
       {error && <ErrorMessage title="Could not load report artifacts" message={error} />}
 
+      {experiments.length === 0 && !loading && (
+        <div className="bg-white rounded-lg border border-slate-200 p-12 text-center space-y-4 shadow-xs">
+          <FileText className="w-10 h-10 text-slate-300 mx-auto" />
+          <h3 className="text-sm font-semibold text-slate-800">No Benchmark Experiments Found</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            Research reports and reproducibility manifests are generated when you run benchmark evaluations.
+          </p>
+          <button
+            onClick={() => navigate("/run-experiment")}
+            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors shadow-xs"
+          >
+            <PlayCircle className="w-4 h-4" /> Run Benchmark Evaluation
+          </button>
+        </div>
+      )}
+
       {!loading && selectedExpId && (
         <div className="space-y-4">
           {/* Action Toolbar */}
@@ -161,14 +185,24 @@ export const ReportsPage: React.FC = () => {
             {/* View Tabs */}
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setActiveTab("report")}
+                onClick={() => setActiveTab("formatted")}
                 className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                  activeTab === "report"
+                  activeTab === "formatted"
                     ? "bg-slate-900 text-white"
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
-                <FileText className="w-3.5 h-3.5" /> Research Report (Markdown)
+                <FileText className="w-3.5 h-3.5" /> Formatted Research Report
+              </button>
+              <button
+                onClick={() => setActiveTab("raw")}
+                className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                  activeTab === "raw"
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                <Code2 className="w-3.5 h-3.5" /> Raw Markdown
               </button>
               <button
                 onClick={() => setActiveTab("manifest")}
@@ -196,11 +230,11 @@ export const ReportsPage: React.FC = () => {
 
               <button
                 onClick={() =>
-                  activeTab === "report"
-                    ? downloadTextFile(reportMarkdown, `${selectedExpId}_report.md`)
-                    : downloadTextFile(JSON.stringify(manifest, null, 2), `${selectedExpId}_manifest.json`, "application/json")
+                  activeTab === "manifest"
+                    ? downloadTextFile(JSON.stringify(manifest, null, 2), `${selectedExpId}_manifest.json`, "application/json")
+                    : downloadTextFile(reportMarkdown, `${selectedExpId}_report.md`)
                 }
-                disabled={activeTab === "report" ? !reportMarkdown : !manifest}
+                disabled={activeTab === "manifest" ? !manifest : !reportMarkdown}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50"
               >
                 <Download className="w-3.5 h-3.5" /> Download Active Document
@@ -225,10 +259,12 @@ export const ReportsPage: React.FC = () => {
               <button
                 onClick={() =>
                   copyToClipboard(
-                    activeTab === "report" ? reportMarkdown : JSON.stringify(manifest, null, 2)
+                    activeTab === "manifest"
+                      ? JSON.stringify(manifest, null, 2)
+                      : reportMarkdown
                   )
                 }
-                disabled={activeTab === "report" ? !reportMarkdown : !manifest}
+                disabled={activeTab === "manifest" ? !manifest : !reportMarkdown}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded hover:bg-slate-50 transition-colors disabled:opacity-50"
                 title="Copy to clipboard"
               >
@@ -238,11 +274,80 @@ export const ReportsPage: React.FC = () => {
           </div>
 
           {/* Tab Content */}
-          {activeTab === "report" ? (
-            <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-8 max-h-[750px] overflow-y-auto">
+          {activeTab === "formatted" ? (
+            <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-8 max-h-[850px] overflow-y-auto">
               {reportMarkdown ? (
-                <div className="prose prose-slate max-w-none text-xs font-mono whitespace-pre-wrap leading-relaxed text-slate-800">
-                  {reportMarkdown}
+                <div className="prose prose-slate max-w-none text-slate-800">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      h1: ({ children }) => (
+                        <h1 className="text-xl font-bold text-slate-900 border-b border-slate-200 pb-3 mb-4 mt-6 first:mt-0 tracking-tight">
+                          {children}
+                        </h1>
+                      ),
+                      h2: ({ children }) => (
+                        <h2 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-2 mb-3 mt-6">
+                          {children}
+                        </h2>
+                      ),
+                      h3: ({ children }) => (
+                        <h3 className="text-sm font-semibold text-slate-800 mb-2 mt-4">
+                          {children}
+                        </h3>
+                      ),
+                      p: ({ children }) => (
+                        <p className="text-xs text-slate-700 leading-relaxed mb-3">
+                          {children}
+                        </p>
+                      ),
+                      ul: ({ children }) => (
+                        <ul className="list-disc pl-5 text-xs text-slate-700 space-y-1 mb-3">
+                          {children}
+                        </ul>
+                      ),
+                      ol: ({ children }) => (
+                        <ol className="list-decimal pl-5 text-xs text-slate-700 space-y-1 mb-3">
+                          {children}
+                        </ol>
+                      ),
+                      li: ({ children }) => (
+                        <li className="text-xs text-slate-700 leading-normal">{children}</li>
+                      ),
+                      table: ({ children }) => (
+                        <div className="overflow-x-auto my-4 rounded border border-slate-200 shadow-2xs">
+                          <table className="w-full text-xs text-left border-collapse">{children}</table>
+                        </div>
+                      ),
+                      thead: ({ children }) => (
+                        <thead className="bg-slate-50 text-slate-700 border-b border-slate-200 uppercase font-semibold text-2xs tracking-wider">
+                          {children}
+                        </thead>
+                      ),
+                      tbody: ({ children }) => (
+                        <tbody className="divide-y divide-slate-100 bg-white">{children}</tbody>
+                      ),
+                      tr: ({ children }) => <tr className="hover:bg-slate-50/50 transition-colors">{children}</tr>,
+                      th: ({ children }) => <th className="px-3.5 py-2.5 font-semibold text-slate-700">{children}</th>,
+                      td: ({ children }) => <td className="px-3.5 py-2.5 text-slate-700 font-mono text-2xs">{children}</td>,
+                      code: ({ children, className }) => {
+                        const isInline = !className;
+                        return isInline ? (
+                          <code className="px-1.5 py-0.5 rounded bg-slate-100 text-indigo-700 font-mono text-2xs">
+                            {children}
+                          </code>
+                        ) : (
+                          <code className="block p-3 rounded-md bg-slate-900 text-emerald-400 font-mono text-xs overflow-x-auto my-2">
+                            {children}
+                          </code>
+                        );
+                      },
+                      hr: () => <hr className="my-6 border-slate-200" />,
+                      strong: ({ children }) => <strong className="font-semibold text-slate-900">{children}</strong>,
+                    }}
+                  >
+                    {reportMarkdown}
+                  </ReactMarkdown>
                 </div>
               ) : (
                 <div className="p-12 text-center space-y-4">
@@ -258,6 +363,18 @@ export const ReportsPage: React.FC = () => {
                     <Sparkles className="w-4 h-4" />
                     {generating ? "Generating Research Report..." : "Generate Research Report Now"}
                   </button>
+                </div>
+              )}
+            </div>
+          ) : activeTab === "raw" ? (
+            <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-6 max-h-[850px] overflow-y-auto">
+              {reportMarkdown ? (
+                <pre className="p-4 bg-slate-900 text-slate-200 rounded-lg font-mono text-xs overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                  {reportMarkdown}
+                </pre>
+              ) : (
+                <div className="p-8 text-center text-xs text-slate-400 italic">
+                  No research report markdown available.
                 </div>
               )}
             </div>
