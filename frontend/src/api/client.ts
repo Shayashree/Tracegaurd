@@ -60,7 +60,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (contentType && contentType.includes("application/json")) {
       return (await response.json()) as T;
     }
-    return (await response.text()) as unknown as T;
+    const text = await response.text();
+    if (text.trim().toLowerCase().startsWith("<!doctype html") || text.trim().toLowerCase().startsWith("<html")) {
+      throw new ApiError(response.status, `API endpoint '${path}' returned HTML instead of data. Ensure the backend server is running.`);
+    }
+    return text as unknown as T;
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;

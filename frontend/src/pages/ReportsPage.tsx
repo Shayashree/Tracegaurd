@@ -40,10 +40,11 @@ export const ReportsPage: React.FC = () => {
       setError(null);
       try {
         const expList = await api.getExperiments({ limit: 50 });
-        setExperiments(expList);
-        if (expList.length > 0) {
-          const hasSelected = expList.some((e) => e.experiment_id === selectedExpId);
-          const targetId = hasSelected ? selectedExpId : expList[0].experiment_id;
+        const list = Array.isArray(expList) ? expList : [];
+        setExperiments(list);
+        if (list.length > 0) {
+          const hasSelected = list.some((e) => e.experiment_id === selectedExpId);
+          const targetId = hasSelected ? selectedExpId : list[0].experiment_id;
           setSelectedExpId(targetId);
           setSearchParams({ id: targetId });
           await loadReportData(targetId);
